@@ -30,6 +30,58 @@ const ScoreboardScreen = () => {
     const [isScoreModalVisible, setScoreModalVisible] = useState(false);
     const [currentRoundScores, setCurrentRoundScores] = useState<Record<string, string>>({});
 
+    // Edit Score State
+    const [isEditModalVisible, setEditModalVisible] = useState(false);
+    const [editingScore, setEditingScore] = useState<{ roundId: string; playerId: string; currentScore: string } | null>(null);
+
+    // Add Player State
+    const [isAddPlayerModalVisible, setAddPlayerModalVisible] = useState(false);
+    const [newPlayerName, setNewPlayerName] = useState('');
+
+    const handleAddPlayer = async () => {
+        if (!session || !newPlayerName.trim()) return;
+
+        const currentTotals = ScoringService.calculateTotalScores(session);
+        const activeScores = session.players
+            .filter(p => !session.eliminatedPlayerIds.includes(p.id))
+            .map(p => currentTotals[p.id]);
+
+        const startScore = activeScores.length > 0 ? Math.max(...activeScores) : 0;
+
+        Alert.alert(
+            'Confirm Add Player',
+            `Add "${newPlayerName}" with starting score: ${startScore}?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Add',
+                    onPress: async () => {
+                        const newPlayer: Player = {
+                            id: Date.now().toString(),
+                            name: newPlayerName.trim(),
+                        };
+
+                        const updatedSession = { ...session };
+                        updatedSession.players.push(newPlayer);
+
+                        // Add adjustment round for new player
+                        const adjustmentRound: GameRound = {
+                            id: `join-${Date.now()}`,
+                            scores: [{ playerId: newPlayer.id, score: startScore }],
+                            timestamp: Date.now(),
+                        };
+
+                        updatedSession.rounds.push(adjustmentRound);
+
+                        await saveSession(updatedSession);
+                        setAddPlayerModalVisible(false);
+                        setNewPlayerName('');
+                    }
+                }
+            ]
+        );
+    };
+
     useEffect(() => {
         loadSession();
     }, [sessionId]);
@@ -59,6 +111,8 @@ const ScoreboardScreen = () => {
 
         const scores: RoundScore[] = [];
         let isValid = true;
+        let zeroCount = 0;
+        let maxPenaltyExceeded = false;
 
         session.players.forEach(player => {
             if (session.eliminatedPlayerIds.includes(player.id)) return;
@@ -66,12 +120,15 @@ const ScoreboardScreen = () => {
             const scoreStr = currentRoundScores[player.id];
             if (scoreStr === undefined || scoreStr === '') {
                 scores.push({ playerId: player.id, score: 0 });
+                zeroCount++;
             } else {
                 const score = parseInt(scoreStr);
                 if (isNaN(score)) {
                     isValid = false;
                 } else {
                     scores.push({ playerId: player.id, score });
+                    if (score === 0) zeroCount++;
+                    if (score > session.config.maxPenalty) maxPenaltyExceeded = true;
                 }
             }
         });
@@ -80,6 +137,31 @@ const ScoreboardScreen = () => {
             Alert.alert('Error', 'Please enter valid numbers for all active players.');
             return;
         }
+
+        // Validation A: Exactly one winner (score 0)
+        if (zeroCount !== 1) {
+            Alert.alert('Invalid Scores', `Exactly one player must have 0 points. Found ${zeroCount}.`);
+            return;
+        }
+
+        // Validation B: Max Penalty Cap
+        if (maxPenaltyExceeded) {
+            Alert.alert(
+                'High Score Warning',
+                `One or more scores exceed the max penalty of ${session.config.maxPenalty}. Are you sure?`,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Confirm', onPress: () => processRound(scores) }
+                ]
+            );
+            return;
+        }
+
+        await processRound(scores);
+    };
+
+    const processRound = async (scores: RoundScore[]) => {
+        if (!session) return;
 
         const newRound: GameRound = {
             id: Date.now().toString(),
@@ -160,6 +242,52 @@ const ScoreboardScreen = () => {
         }
     };
 
+    const handleScorePress = (roundId: string, playerId: string, currentScore: number) => {
+        if (readOnly) return;
+        setEditingScore({ roundId, playerId, currentScore: currentScore.toString() });
+        setEditModalVisible(true);
+    };
+
+    const handleSaveEditedScore = async () => {
+        if (!session || !editingScore) return;
+
+        const newScore = parseInt(editingScore.currentScore);
+        if (isNaN(newScore)) {
+            Alert.alert('Error', 'Please enter a valid number');
+            return;
+        }
+
+        const updatedSession = { ...session };
+        const roundIndex = updatedSession.rounds.findIndex(r => r.id === editingScore.roundId);
+
+        if (roundIndex === -1) return;
+
+        // Update the score in the round
+        const scoreIndex = updatedSession.rounds[roundIndex].scores.findIndex(s => s.playerId === editingScore.playerId);
+        if (scoreIndex >= 0) {
+            updatedSession.rounds[roundIndex].scores[scoreIndex].score = newScore;
+        } else {
+            updatedSession.rounds[roundIndex].scores.push({ playerId: editingScore.playerId, score: newScore });
+        }
+
+        // Recalculate totals and elimination status
+        const newTotals = ScoringService.calculateTotalScores(updatedSession);
+
+        const newEliminatedIds: string[] = [];
+
+        updatedSession.players.forEach(player => {
+            if (ScoringService.checkElimination(newTotals[player.id], session.config)) {
+                newEliminatedIds.push(player.id);
+            }
+        });
+
+        updatedSession.eliminatedPlayerIds = newEliminatedIds;
+
+        await saveSession(updatedSession);
+        setEditModalVisible(false);
+        setEditingScore(null);
+    };
+
     const saveSession = async (updatedSession: GameSession) => {
         await StorageService.saveGameToHistory(updatedSession);
         await StorageService.saveCurrentSession(updatedSession);
@@ -193,11 +321,34 @@ const ScoreboardScreen = () => {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <TouchableOpacity
+                    onPress={() => {
+                        if (readOnly) {
+                            if (navigation.canGoBack()) {
+                                navigation.goBack();
+                            } else {
+                                navigation.navigate('History');
+                            }
+                        } else {
+                            navigation.reset({
+                                index: 0,
+                                routes: [{ name: 'Home' }],
+                            });
+                        }
+                    }}
+                    style={styles.backButton}
+                >
                     <Text style={styles.backButtonText}>←</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{session.title}</Text>
-                {session.type !== 'UNO' && <Text style={styles.potText}>Pot: ${potSize}</Text>}
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {session.type !== 'UNO' && <Text style={styles.potText}>Pot: ${potSize}</Text>}
+                    {!readOnly && (
+                        <TouchableOpacity style={styles.headerAddButton} onPress={() => setAddPlayerModalVisible(true)}>
+                            <Text style={styles.headerAddButtonText}>+ Player</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
 
             <View style={styles.tableContainer}>
@@ -218,12 +369,21 @@ const ScoreboardScreen = () => {
                                             styles.headerBackground,
                                             session.eliminatedPlayerIds.includes(player.id) && styles.eliminatedHeader
                                         ]}
-                                        onPress={() => handlePlayerPress(player)}
+                                        onPress={() => {
+                                            const activeCount = session.players.length - session.eliminatedPlayerIds.length;
+                                            if (activeCount > 1) {
+                                                handlePlayerPress(player);
+                                            } else {
+                                                Alert.alert('Game Over', 'Cannot re-buy when only one player remains.');
+                                            }
+                                        }}
                                         disabled={readOnly || !session.eliminatedPlayerIds.includes(player.id)}
                                     >
                                         <Text style={styles.headerText} numberOfLines={1}>{player.name}</Text>
                                         {!readOnly && session.eliminatedPlayerIds.includes(player.id) && (
-                                            <Text style={styles.eliminatedLabel}>OUT (Tap to Rebuy)</Text>
+                                            <Text style={styles.eliminatedLabel}>
+                                                {(session.players.length - session.eliminatedPlayerIds.length) > 1 ? 'OUT (Tap to Rebuy)' : 'OUT'}
+                                            </Text>
                                         )}
                                     </TouchableOpacity>
                                 ))}
@@ -237,18 +397,21 @@ const ScoreboardScreen = () => {
 
                                 session.rounds.forEach((round) => {
                                     const isRebuy = round.id.startsWith('rebuy');
+                                    const isJoin = round.id.startsWith('join');
 
-                                    if (isRebuy) {
-                                        if (!currentRebuyRow) {
-                                            currentRebuyRow = {
-                                                id: 'merged-' + round.id,
-                                                type: 'rebuy',
-                                                scores: {}
-                                            };
-                                            rows.push(currentRebuyRow);
-                                        }
-                                        round.scores.forEach(s => {
-                                            currentRebuyRow.scores[s.playerId] = (currentRebuyRow.scores[s.playerId] || 0) + s.score;
+                                    if (isRebuy || isJoin) {
+                                        // We can merge joins into rebuys or keep them separate?
+                                        // Let's treat them as special rows.
+                                        // Actually, the current logic merges consecutive rebuys.
+                                        // Let's just push them as separate rows for now to be safe, or merge if we want cleaner UI.
+                                        // Simple: Just push as a row.
+                                        const scoreMap: Record<string, number> = {};
+                                        round.scores.forEach(s => scoreMap[s.playerId] = s.score);
+                                        rows.push({
+                                            id: round.id,
+                                            type: isRebuy ? 'rebuy' : 'join',
+                                            roundNumber: 0,
+                                            scores: scoreMap
                                         });
                                     } else {
                                         currentRebuyRow = null;
@@ -267,14 +430,21 @@ const ScoreboardScreen = () => {
                                 return rows.map((row) => (
                                     <Animated.View key={row.id} entering={FadeInDown.duration(400)} style={styles.tableRow}>
                                         <View style={[styles.cell, styles.roundColumn]}>
-                                            <Text style={styles.cellText}>{row.type === 'rebuy' ? 'Rebuy' : row.roundNumber}</Text>
+                                            <Text style={styles.cellText}>
+                                                {row.type === 'rebuy' ? 'Rebuy' : row.type === 'join' ? 'Join' : row.roundNumber}
+                                            </Text>
                                         </View>
                                         {session.players.map(player => {
                                             const score = row.scores[player.id] !== undefined ? row.scores[player.id] : '-';
                                             return (
-                                                <View key={player.id} style={[styles.cell, styles.playerColumn]}>
+                                                <TouchableOpacity
+                                                    key={player.id}
+                                                    style={[styles.cell, styles.playerColumn]}
+                                                    onPress={() => row.type === 'round' && handleScorePress(row.id, player.id, typeof score === 'number' ? score : 0)}
+                                                    disabled={readOnly || row.type !== 'round'}
+                                                >
                                                     <Text style={styles.cellText}>{score}</Text>
-                                                </View>
+                                                </TouchableOpacity>
                                             );
                                         })}
                                     </Animated.View>
@@ -342,8 +512,58 @@ const ScoreboardScreen = () => {
                         <Text style={styles.saveRoundButtonText}>Save Round</Text>
                     </TouchableOpacity>
                 </View>
+
             </Modal>
-        </SafeAreaView>
+
+            {/* Edit Score Modal */}
+            <Modal visible={isEditModalVisible} animationType="fade" transparent={true}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.smallModalContainer}>
+                        <Text style={styles.modalTitle}>Edit Score</Text>
+                        <TextInput
+                            style={styles.largeInput}
+                            keyboardType="numeric" // Allow negative numbers? numeric usually does.
+                            value={editingScore?.currentScore || ''}
+                            onChangeText={(text) => setEditingScore(prev => prev ? { ...prev, currentScore: text } : null)}
+                            autoFocus={true}
+                            selectTextOnFocus={true}
+                        />
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setEditModalVisible(false)}>
+                                <Text style={styles.modalButtonText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleSaveEditedScore}>
+                                <Text style={styles.modalButtonText}>Save</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Add Player Modal */}
+            <Modal visible={isAddPlayerModalVisible} animationType="fade" transparent={true}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.smallModalContainer}>
+                        <Text style={styles.modalTitle}>Add New Player</Text>
+                        <TextInput
+                            style={styles.largeInput}
+                            placeholder="Player Name"
+                            value={newPlayerName}
+                            onChangeText={setNewPlayerName}
+                            autoFocus={true}
+                        />
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setAddPlayerModalVisible(false)}>
+                                <Text style={styles.modalButtonText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleAddPlayer}>
+                                <Text style={styles.modalButtonText}>Add</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        </SafeAreaView >
     );
 };
 
@@ -354,7 +574,9 @@ const styles = StyleSheet.create({
     backButton: { padding: SPACING.s, marginRight: SPACING.s },
     backButtonText: { fontSize: FONT_SIZE.xl, color: COLORS.primary, fontWeight: 'bold' },
     headerTitle: { fontSize: FONT_SIZE.m, fontWeight: 'bold', flex: 1, color: COLORS.text },
-    potText: { fontSize: FONT_SIZE.l, fontWeight: 'bold', color: COLORS.success },
+    potText: { fontSize: FONT_SIZE.l, fontWeight: 'bold', color: COLORS.success, marginRight: 10 },
+    headerAddButton: { padding: 8, backgroundColor: COLORS.secondary, borderRadius: 8 },
+    headerAddButtonText: { color: COLORS.white, fontWeight: 'bold', fontSize: FONT_SIZE.s },
 
     tableContainer: { flex: 1, padding: SPACING.s },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.border, minHeight: 50, backgroundColor: COLORS.card },
@@ -388,6 +610,15 @@ const styles = StyleSheet.create({
     scoreInput: { fontSize: FONT_SIZE.l, fontWeight: 'bold', textAlign: 'right', minWidth: 50, borderBottomWidth: 1, borderBottomColor: COLORS.border, color: COLORS.text },
     saveRoundButton: { backgroundColor: COLORS.primary, padding: SPACING.m, borderRadius: 12, alignItems: 'center', marginTop: SPACING.l, ...SHADOWS.medium },
     saveRoundButtonText: { color: COLORS.white, fontSize: FONT_SIZE.l, fontWeight: 'bold' },
+
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    smallModalContainer: { width: '80%', backgroundColor: COLORS.background, borderRadius: 16, padding: SPACING.l, ...SHADOWS.medium },
+    largeInput: { fontSize: 32, fontWeight: 'bold', textAlign: 'center', borderBottomWidth: 2, borderBottomColor: COLORS.primary, marginVertical: SPACING.l, color: COLORS.text },
+    modalButtons: { flexDirection: 'row', gap: SPACING.m },
+    modalButton: { flex: 1, padding: SPACING.m, borderRadius: 8, alignItems: 'center' },
+    cancelButton: { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
+    saveButton: { backgroundColor: COLORS.primary },
+    modalButtonText: { fontWeight: 'bold', fontSize: FONT_SIZE.m, color: COLORS.text },
 });
 
 export default ScoreboardScreen;

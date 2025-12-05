@@ -16,6 +16,7 @@ export interface GameConfig {
     middleScootPenalty: number;
     maxPenalty: number;
     eliminationThreshold: number;
+    numWinners: number;
 }
 
 export interface RoundScore {

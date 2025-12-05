@@ -40,7 +40,7 @@ const HistoryScreen = () => {
             <Animated.View entering={FadeInDown.delay(index * 100).duration(400)}>
                 <TouchableOpacity
                     style={styles.card}
-                    onPress={() => navigation.navigate('Scoreboard', { sessionId: item.id, readOnly: true })}
+                    onPress={() => navigation.navigate('Scoreboard', { sessionId: item.id, readOnly: !item.isActive })}
                 >
                     <View style={styles.cardHeader}>
                         <View>

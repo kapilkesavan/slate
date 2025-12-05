@@ -1,16 +1,16 @@
+import { useNavigation, useRoute } from '@react-navigation/native';
 import React, { useState } from 'react';
 import {
-    View,
-    Text,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
     StyleSheet,
+    Text,
     TextInput,
     TouchableOpacity,
-    ScrollView,
-    KeyboardAvoidingView,
-    Platform
+    View
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { GameConfig, Player, GameSession } from '../types';
+import { GameConfig, GameSession } from '../types';
 import { StorageService } from '../utils/storage';
 
 const GameConfigScreen = () => {
@@ -24,6 +24,7 @@ const GameConfigScreen = () => {
         middleScootPenalty: 40,
         maxPenalty: 80,
         eliminationThreshold: gameType === 'UNO' ? 500 : 220,
+        numWinners: players.length >= 6 ? 3 : players.length >= 4 ? 2 : 1,
     });
 
     const updateConfig = (key: keyof GameConfig, value: string) => {
@@ -114,7 +115,7 @@ const GameConfigScreen = () => {
                     )}
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Elimination Threshold (> Points)</Text>
+                        <Text style={styles.label}>Elimination Threshold (&gt; Points)</Text>
                         <TextInput
                             style={styles.input}
                             keyboardType="numeric"
@@ -122,6 +123,28 @@ const GameConfigScreen = () => {
                             onChangeText={(v) => updateConfig('eliminationThreshold', v)}
                         />
                         <Text style={styles.helperText}>Player is out if score {'>'} {config.eliminationThreshold}</Text>
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Number of Winners</Text>
+                        <View style={styles.winnerSelector}>
+                            {[1, 2, 3].map((count) => (
+                                <TouchableOpacity
+                                    key={count}
+                                    style={[
+                                        styles.winnerButton,
+                                        config.numWinners === count && styles.winnerButtonActive
+                                    ]}
+                                    onPress={() => setConfig(prev => ({ ...prev, numWinners: count }))}
+                                >
+                                    <Text style={[
+                                        styles.winnerButtonText,
+                                        config.numWinners === count && styles.winnerButtonTextActive
+                                    ]}>{count}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                        <Text style={styles.helperText}>Default based on {players.length} players</Text>
                     </View>
                 </View>
 
@@ -146,6 +169,11 @@ const styles = StyleSheet.create({
     helperText: { fontSize: 12, color: '#888', marginTop: 5 },
     startButton: { backgroundColor: '#34C759', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 30, shadowColor: '#34C759', shadowOpacity: 0.3, shadowRadius: 5, elevation: 4 },
     startButtonText: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+    winnerSelector: { flexDirection: 'row', gap: 10, marginTop: 5 },
+    winnerButton: { flex: 1, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#ddd', alignItems: 'center', backgroundColor: '#fafafa' },
+    winnerButtonActive: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
+    winnerButtonText: { fontSize: 16, fontWeight: '600', color: '#333' },
+    winnerButtonTextActive: { color: '#fff' },
 });
 
 export default GameConfigScreen;

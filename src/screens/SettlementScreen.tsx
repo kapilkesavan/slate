@@ -1,6 +1,10 @@
+
 import { useNavigation, useRoute } from '@react-navigation/native';
-import React, { useEffect, useState } from 'react';
+import * as Sharing from 'expo-sharing'; // Added import
+import React, { useEffect, useRef, useState } from 'react';
 import {
+    Alert // Added Alert import
+    ,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -9,6 +13,7 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInUp, ZoomIn } from 'react-native-reanimated';
+import { captureRef } from 'react-native-view-shot'; // Added import
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { GameSession, Settlement } from '../types';
 import { ScoringService } from '../utils/scoring';
@@ -19,6 +24,7 @@ const SettlementScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { sessionId } = route.params || {};
+    const viewRef = useRef<View>(null); // Added useRef
 
     const [session, setSession] = useState<GameSession | null>(null);
     const [settlements, setSettlements] = useState<Settlement[]>([]);
@@ -49,6 +55,23 @@ const SettlementScreen = () => {
         return session?.players.find(p => p.id === id)?.name || 'Unknown';
     };
 
+    const handleShare = async () => { // Added handleShare function
+        try {
+            if (viewRef.current) {
+                const uri = await captureRef(viewRef, {
+                    format: 'png',
+                    quality: 0.8,
+                });
+                await Sharing.shareAsync(uri);
+            } else {
+                Alert.alert('Error', 'Could not capture view for sharing.');
+            }
+        } catch (error) {
+            console.error('Error sharing scoreboard', error);
+            Alert.alert('Error', 'Failed to share scoreboard.');
+        }
+    };
+
     const handleHome = () => {
         // Clear current session as game is over
         StorageService.clearCurrentSession();
@@ -58,11 +81,55 @@ const SettlementScreen = () => {
         });
     };
 
+    const handleSplitPot = () => {
+        if (!session) return;
+
+        Alert.alert(
+            'Split Pot',
+            'Are you sure you want to split the remaining pot equally among active players?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Split',
+                    onPress: () => {
+                        const activePlayers = session.players.filter(p => !session.eliminatedPlayerIds.includes(p.id));
+                        if (activePlayers.length === 0) return;
+
+                        const pot = ScoringService.calculatePotSize(session);
+                        const splitAmount = pot / activePlayers.length;
+                        const buyIn = session.config.buyIn;
+
+                        // Create new settlements based on split
+                        const newSettlements: Settlement[] = session.players.map(player => {
+                            const isEliminated = session.eliminatedPlayerIds.includes(player.id);
+                            const rebuys = session.rebuys[player.id] || 0;
+                            const totalInvested = buyIn + (rebuys * buyIn);
+
+                            let payout = 0;
+                            if (!isEliminated) {
+                                payout = splitAmount;
+                            }
+
+                            return {
+                                playerId: player.id,
+                                rank: isEliminated ? 99 : 1, // Active players tied for 1st
+                                amount: payout - totalInvested
+                            };
+                        }).sort((a, b) => a.rank - b.rank);
+
+                        setSettlements(newSettlements);
+                        setTransfers(SettlementService.calculateTransfers(newSettlements));
+                    }
+                }
+            ]
+        );
+    };
+
     if (!session) return <View style={styles.loading}><Text>Loading...</Text></View>;
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.content}>
+            <ScrollView contentContainerStyle={styles.content} ref={viewRef as any} collapsable={false} style={{ backgroundColor: COLORS.background }}>
                 <Animated.View entering={FadeInUp.duration(600)} style={styles.header}>
                     <Text style={styles.title}>Game Over</Text>
                     <Text style={styles.subtitle}>Final Settlement</Text>
@@ -124,6 +191,14 @@ const SettlementScreen = () => {
                 )}
 
                 <Animated.View entering={FadeInUp.delay(800).duration(600)}>
+                    {session.type !== 'UNO' && (
+                        <TouchableOpacity style={styles.splitButton} onPress={handleSplitPot}>
+                            <Text style={styles.splitButtonText}>Split Pot / Shake Hands</Text>
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+                        <Text style={styles.shareButtonText}>Share Result</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.homeButton} onPress={handleHome}>
                         <Text style={styles.homeButtonText}>Back to Home</Text>
                     </TouchableOpacity>
@@ -170,6 +245,10 @@ const styles = StyleSheet.create({
 
     homeButton: { backgroundColor: COLORS.primary, padding: SPACING.m, borderRadius: 16, alignItems: 'center', marginTop: SPACING.s, ...SHADOWS.medium },
     homeButtonText: { color: COLORS.white, fontSize: FONT_SIZE.l, fontWeight: 'bold' },
+    splitButton: { backgroundColor: COLORS.secondary, padding: SPACING.m, borderRadius: 16, alignItems: 'center', marginTop: SPACING.s, marginBottom: SPACING.s, ...SHADOWS.medium },
+    splitButtonText: { color: COLORS.white, fontSize: FONT_SIZE.m, fontWeight: 'bold' },
+    shareButton: { backgroundColor: COLORS.text, padding: SPACING.m, borderRadius: 16, alignItems: 'center', marginBottom: SPACING.s, ...SHADOWS.medium },
+    shareButtonText: { color: COLORS.white, fontSize: FONT_SIZE.m, fontWeight: 'bold' },
 });
 
 export default SettlementScreen;

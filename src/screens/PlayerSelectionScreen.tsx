@@ -27,6 +27,8 @@ const PlayerSelectionScreen = () => {
     const [newPlayerName, setNewPlayerName] = useState('');
     const [newPlayerAlias, setNewPlayerAlias] = useState('');
 
+    const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+
     useEffect(() => {
         loadPlayers();
     }, [groupId]);
@@ -49,29 +51,66 @@ const PlayerSelectionScreen = () => {
         }
     };
 
-    const handleAddPlayer = async () => {
+    const handleSavePlayer = async () => {
         if (!newPlayerName.trim()) {
             Alert.alert('Error', 'Player name is required');
             return;
         }
 
-        const newPlayer: Player = {
-            id: Date.now().toString(),
-            name: newPlayerName.trim(),
-            alias: newPlayerAlias.trim() || undefined,
-        };
+        if (editingPlayer) {
+            // Update existing player
+            const updatedPlayer: Player = {
+                ...editingPlayer,
+                name: newPlayerName.trim(),
+                alias: newPlayerAlias.trim() || undefined,
+            };
+            await StorageService.updatePlayer(updatedPlayer);
+        } else {
+            // Create new player
+            const newPlayer: Player = {
+                id: Date.now().toString(),
+                name: newPlayerName.trim(),
+                alias: newPlayerAlias.trim() || undefined,
+            };
+            await StorageService.addPlayer(newPlayer);
 
-        await StorageService.addPlayer(newPlayer);
-
-        if (groupId) {
-            await StorageService.addPlayerToGroup(groupId, newPlayer.id);
+            if (groupId) {
+                await StorageService.addPlayerToGroup(groupId, newPlayer.id);
+            }
+            setSelectedPlayers(prev => [...prev, newPlayer]);
         }
 
         await loadPlayers();
         setNewPlayerName('');
         setNewPlayerAlias('');
+        setEditingPlayer(null);
         setModalVisible(false);
-        setSelectedPlayers(prev => [...prev, newPlayer]);
+    };
+
+    const handleEditPlayer = (player: Player) => {
+        setEditingPlayer(player);
+        setNewPlayerName(player.name);
+        setNewPlayerAlias(player.alias || '');
+        setModalVisible(true);
+    };
+
+    const handleDeletePlayer = (player: Player) => {
+        Alert.alert(
+            'Delete Player',
+            `Are you sure you want to delete "${player.name}"? This will remove them from the list but keep historical game records.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await StorageService.deletePlayer(player.id);
+                        setSelectedPlayers(prev => prev.filter(p => p.id !== player.id));
+                        await loadPlayers();
+                    }
+                }
+            ]
+        );
     };
 
     const toggleSelection = (player: Player) => {
@@ -116,7 +155,7 @@ const PlayerSelectionScreen = () => {
                 {selectedPlayers.length === 0 ? (
                     <View style={styles.emptyState}>
                         <Text style={styles.emptyStateText}>No players selected.</Text>
-                        <Text style={styles.emptyStateSubText}>Tap "+" to add players.</Text>
+                        <Text style={styles.emptyStateSubText}>Tap &quot;+&quot; to add players.</Text>
                     </View>
                 ) : (
                     <DraggableFlatList
@@ -148,7 +187,12 @@ const PlayerSelectionScreen = () => {
             <View style={styles.footer}>
                 <TouchableOpacity
                     style={styles.addButton}
-                    onPress={() => setModalVisible(true)}
+                    onPress={() => {
+                        setEditingPlayer(null);
+                        setNewPlayerName('');
+                        setNewPlayerAlias('');
+                        setModalVisible(true);
+                    }}
                 >
                     <Text style={styles.addButtonText}>+ Add / Select Players</Text>
                 </TouchableOpacity>
@@ -166,17 +210,17 @@ const PlayerSelectionScreen = () => {
             <Modal visible={isModalVisible} animationType="slide" presentationStyle="pageSheet">
                 <View style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Select Players</Text>
+                        <Text style={styles.modalTitle}>{editingPlayer ? 'Edit Player' : 'Select Players'}</Text>
                         <TouchableOpacity onPress={() => setModalVisible(false)}>
                             <Text style={styles.closeText}>Done</Text>
                         </TouchableOpacity>
                     </View>
 
-                    {/* Create New Player Form */}
+                    {/* Create/Edit Player Form */}
                     <View style={styles.createForm}>
                         <TextInput
                             style={styles.input}
-                            placeholder="New Player Name"
+                            placeholder="Player Name"
                             value={newPlayerName}
                             onChangeText={setNewPlayerName}
                             placeholderTextColor={COLORS.textSecondary}
@@ -188,8 +232,8 @@ const PlayerSelectionScreen = () => {
                             onChangeText={setNewPlayerAlias}
                             placeholderTextColor={COLORS.textSecondary}
                         />
-                        <TouchableOpacity style={styles.createButton} onPress={handleAddPlayer}>
-                            <Text style={styles.createButtonText}>Create & Add to Group</Text>
+                        <TouchableOpacity style={styles.createButton} onPress={handleSavePlayer}>
+                            <Text style={styles.createButtonText}>{editingPlayer ? 'Save Changes' : 'Create & Add'}</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -201,15 +245,26 @@ const PlayerSelectionScreen = () => {
                             const isSelected = selectedPlayers.find(p => p.id === item.id);
                             return (
                                 <Animated.View entering={FadeInDown.duration(400)}>
-                                    <TouchableOpacity
-                                        style={[styles.modalItem, isSelected && styles.modalItemSelected]}
-                                        onPress={() => toggleSelection(item)}
-                                    >
-                                        <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
-                                            {item.name}
-                                        </Text>
-                                        {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                                    </TouchableOpacity>
+                                    <View style={[styles.modalItem, isSelected && styles.modalItemSelected]}>
+                                        <TouchableOpacity
+                                            style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                                            onPress={() => toggleSelection(item)}
+                                        >
+                                            <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
+                                                {item.name}
+                                            </Text>
+                                            {isSelected && <Text style={styles.checkmark}> ✓</Text>}
+                                        </TouchableOpacity>
+
+                                        <View style={styles.actionButtons}>
+                                            <TouchableOpacity onPress={() => handleEditPlayer(item)} style={styles.actionBtn}>
+                                                <Text style={styles.actionBtnText}>✎</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity onPress={() => handleDeletePlayer(item)} style={styles.actionBtn}>
+                                                <Text style={[styles.actionBtnText, { color: COLORS.danger }]}>🗑</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
                                 </Animated.View>
                             );
                         }}
@@ -291,6 +346,9 @@ const styles = StyleSheet.create({
     modalItemText: { fontSize: FONT_SIZE.m, color: COLORS.text },
     modalItemTextSelected: { color: COLORS.primary, fontWeight: '600' },
     checkmark: { color: COLORS.primary, fontSize: FONT_SIZE.l, fontWeight: 'bold' },
+    actionButtons: { flexDirection: 'row' },
+    actionBtn: { padding: SPACING.s, marginLeft: SPACING.s },
+    actionBtnText: { fontSize: 18, color: COLORS.textSecondary },
 });
 
 export default PlayerSelectionScreen;

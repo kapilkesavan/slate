@@ -35,6 +35,22 @@ export const StorageService = {
         await StorageService.savePlayers(updatedPlayers);
     },
 
+    updatePlayer: async (player: Player): Promise<void> => {
+        const players = await StorageService.getPlayers();
+        const index = players.findIndex(p => p.id === player.id);
+        if (index >= 0) {
+            const updatedPlayers = [...players];
+            updatedPlayers[index] = player;
+            await StorageService.savePlayers(updatedPlayers);
+        }
+    },
+
+    deletePlayer: async (playerId: string): Promise<void> => {
+        const players = await StorageService.getPlayers();
+        const updatedPlayers = players.filter(p => p.id !== playerId);
+        await StorageService.savePlayers(updatedPlayers);
+    },
+
     // --- Game History ---
     getGameHistory: async (): Promise<GameSession[]> => {
         try {
