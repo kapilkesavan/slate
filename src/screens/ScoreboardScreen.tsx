@@ -1,5 +1,6 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
-import React, { useEffect, useState } from 'react';
+import * as Sharing from 'expo-sharing';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Modal,
@@ -12,6 +13,7 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { captureRef } from 'react-native-view-shot';
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { GameRound, GameSession, Player, RoundScore } from '../types';
 import { ScoringService } from '../utils/scoring';
@@ -21,10 +23,12 @@ const ScoreboardScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { sessionId, readOnly } = route.params || {};
+    const viewRef = useRef<ScrollView>(null);
 
     const [session, setSession] = useState<GameSession | null>(null);
     const [totals, setTotals] = useState<Record<string, number>>({});
     const [potSize, setPotSize] = useState(0);
+    const [rankings, setRankings] = useState<{ playerId: string; rank: number }[]>([]);
 
     // Modal State
     const [isScoreModalVisible, setScoreModalVisible] = useState(false);
@@ -37,6 +41,23 @@ const ScoreboardScreen = () => {
     // Add Player State
     const [isAddPlayerModalVisible, setAddPlayerModalVisible] = useState(false);
     const [newPlayerName, setNewPlayerName] = useState('');
+
+    const handleShare = async () => {
+        try {
+            if (viewRef.current) {
+                const uri = await captureRef(viewRef, {
+                    format: 'png',
+                    quality: 0.8,
+                });
+                await Sharing.shareAsync(uri);
+            } else {
+                Alert.alert('Error', 'Could not capture view for sharing.');
+            }
+        } catch (error) {
+            console.error('Error sharing scoreboard', error);
+            Alert.alert('Error', 'Failed to share scoreboard.');
+        }
+    };
 
     const handleAddPlayer = async () => {
         if (!session || !newPlayerName.trim()) return;
@@ -104,6 +125,7 @@ const ScoreboardScreen = () => {
     const updateStats = (currentSession: GameSession) => {
         setTotals(ScoringService.calculateTotalScores(currentSession));
         setPotSize(ScoringService.calculatePotSize(currentSession));
+        setRankings(ScoringService.getRankings(currentSession));
     };
 
     const handleAddRound = async () => {
@@ -342,6 +364,9 @@ const ScoreboardScreen = () => {
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{session.title}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity onPress={handleShare} style={styles.headerShareButton}>
+                        <Text style={styles.headerShareButtonText}>📤</Text>
+                    </TouchableOpacity>
                     {session.type !== 'UNO' && <Text style={styles.potText}>Pot: ${potSize}</Text>}
                     {!readOnly && (
                         <TouchableOpacity style={styles.headerAddButton} onPress={() => setAddPlayerModalVisible(true)}>
@@ -354,39 +379,60 @@ const ScoreboardScreen = () => {
             <View style={styles.tableContainer}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                     <View>
-                        <ScrollView showsVerticalScrollIndicator={true}>
+                        <ScrollView
+                            showsVerticalScrollIndicator={true}
+                            ref={viewRef}
+                            collapsable={false}
+                        >
                             {/* Header Row */}
                             <View style={styles.tableRow}>
                                 <View style={[styles.cell, styles.roundColumn, styles.headerBackground]}>
                                     <Text style={styles.headerText}>Round</Text>
                                 </View>
-                                {session.players.map(player => (
-                                    <TouchableOpacity
-                                        key={player.id}
-                                        style={[
-                                            styles.cell,
-                                            styles.playerColumn,
-                                            styles.headerBackground,
-                                            session.eliminatedPlayerIds.includes(player.id) && styles.eliminatedHeader
-                                        ]}
-                                        onPress={() => {
-                                            const activeCount = session.players.length - session.eliminatedPlayerIds.length;
-                                            if (activeCount > 1) {
-                                                handlePlayerPress(player);
-                                            } else {
-                                                Alert.alert('Game Over', 'Cannot re-buy when only one player remains.');
-                                            }
-                                        }}
-                                        disabled={readOnly || !session.eliminatedPlayerIds.includes(player.id)}
-                                    >
-                                        <Text style={styles.headerText} numberOfLines={1}>{player.name}</Text>
-                                        {!readOnly && session.eliminatedPlayerIds.includes(player.id) && (
-                                            <Text style={styles.eliminatedLabel}>
-                                                {(session.players.length - session.eliminatedPlayerIds.length) > 1 ? 'OUT (Tap to Rebuy)' : 'OUT'}
+                                {session.players.map(player => {
+                                    const rank = rankings.find(r => r.playerId === player.id)?.rank;
+                                    const isEliminated = session.eliminatedPlayerIds.includes(player.id);
+                                    let statusText = "";
+
+                                    if (!session.isActive) {
+                                        statusText = rank ? ` (#${rank})` : "";
+                                    } else if (isEliminated) {
+                                        statusText = " (Out)";
+                                    } else if (rank) {
+                                        statusText = ` (#${rank})`;
+                                    }
+
+                                    return (
+                                        <TouchableOpacity
+                                            key={player.id}
+                                            style={[
+                                                styles.cell,
+                                                styles.playerColumn,
+                                                styles.headerBackground,
+                                                isEliminated && styles.eliminatedHeader
+                                            ]}
+                                            onPress={() => {
+                                                const activeCount = session.players.length - session.eliminatedPlayerIds.length;
+                                                if (activeCount > 1) {
+                                                    handlePlayerPress(player);
+                                                } else {
+                                                    Alert.alert('Game Over', 'Cannot re-buy when only one player remains.');
+                                                }
+                                            }}
+                                            disabled={readOnly || !isEliminated}
+                                        >
+                                            <Text style={styles.headerText} numberOfLines={1}>
+                                                {player.name}
+                                                <Text style={{ fontSize: 10, fontWeight: 'normal' }}>{statusText}</Text>
                                             </Text>
-                                        )}
-                                    </TouchableOpacity>
-                                ))}
+                                            {!readOnly && isEliminated && (
+                                                <Text style={styles.eliminatedLabel}>
+                                                    {(session.players.length - session.eliminatedPlayerIds.length) > 1 ? 'Tap to Rebuy' : 'Eliminated'}
+                                                </Text>
+                                            )}
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
 
                             {/* Data Rows */}
@@ -577,6 +623,8 @@ const styles = StyleSheet.create({
     potText: { fontSize: FONT_SIZE.l, fontWeight: 'bold', color: COLORS.success, marginRight: 10 },
     headerAddButton: { padding: 8, backgroundColor: COLORS.secondary, borderRadius: 8 },
     headerAddButtonText: { color: COLORS.white, fontWeight: 'bold', fontSize: FONT_SIZE.s },
+    headerShareButton: { padding: 8, marginRight: 10 },
+    headerShareButtonText: { fontSize: 24 },
 
     tableContainer: { flex: 1, padding: SPACING.s },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: COLORS.border, minHeight: 50, backgroundColor: COLORS.card },

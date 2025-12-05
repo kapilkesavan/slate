@@ -36,17 +36,23 @@ export const SettlementService = {
 
         let payouts: Record<string, number> = {}; // Amount RECEIVED from Pot
 
-        if (playerCount <= 5) {
-            // Scenario A
+        // Default numWinners logic if not present in config (backward compatibility)
+        const numWinners = session.config.numWinners || (playerCount >= 6 ? 3 : playerCount >= 4 ? 2 : 1);
+
+        if (numWinners === 1) {
+            if (firstPlaceId) {
+                payouts[firstPlaceId] = potSize;
+            }
+        } else if (numWinners === 2) {
             if (secondPlaceId) {
                 payouts[secondPlaceId] = buyIn;
             }
             if (firstPlaceId) {
                 const secondPayout = secondPlaceId ? (payouts[secondPlaceId] || 0) : 0;
-                payouts[firstPlaceId] = potSize - secondPayout;
+                payouts[firstPlaceId] = Math.max(0, potSize - secondPayout);
             }
         } else {
-            // Scenario B
+            // 3 or more winners
             if (thirdPlaceId) {
                 payouts[thirdPlaceId] = buyIn;
             }
@@ -56,7 +62,7 @@ export const SettlementService = {
             if (firstPlaceId) {
                 const secondPayout = secondPlaceId ? (payouts[secondPlaceId] || 0) : 0;
                 const thirdPayout = thirdPlaceId ? (payouts[thirdPlaceId] || 0) : 0;
-                payouts[firstPlaceId] = potSize - secondPayout - thirdPayout;
+                payouts[firstPlaceId] = Math.max(0, potSize - secondPayout - thirdPayout);
             }
         }
 

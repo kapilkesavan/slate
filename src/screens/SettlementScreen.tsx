@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
     Alert // Added Alert import
     ,
+
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -133,6 +134,7 @@ const SettlementScreen = () => {
                 <Animated.View entering={FadeInUp.duration(600)} style={styles.header}>
                     <Text style={styles.title}>Game Over</Text>
                     <Text style={styles.subtitle}>Final Settlement</Text>
+                    <Text style={styles.sessionTitle}>{session.title}</Text>
                     {session.type !== 'UNO' && <Text style={styles.potText}>Total Pot: ${potSize}</Text>}
                 </Animated.View>
 
@@ -215,6 +217,7 @@ const styles = StyleSheet.create({
     header: { alignItems: 'center', marginBottom: SPACING.xl },
     title: { fontSize: FONT_SIZE.xxxl, fontWeight: 'bold', color: COLORS.text, marginBottom: SPACING.xs },
     subtitle: { fontSize: FONT_SIZE.l, color: COLORS.textSecondary, marginBottom: SPACING.m },
+    sessionTitle: { fontSize: FONT_SIZE.m, color: COLORS.textSecondary, marginBottom: SPACING.s, fontWeight: '600' },
     potText: { fontSize: FONT_SIZE.xl, fontWeight: 'bold', color: COLORS.success },
 
     section: { backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.m, marginBottom: SPACING.l, ...SHADOWS.medium },
