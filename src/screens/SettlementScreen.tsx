@@ -6,7 +6,8 @@ import {
     Alert // Added Alert import
     ,
 
-    SafeAreaView,
+
+
     ScrollView,
     StyleSheet,
     Text,
@@ -14,6 +15,7 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInUp, ZoomIn } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot'; // Added import
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { GameSession, Settlement } from '../types';
@@ -130,81 +132,83 @@ const SettlementScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.content} ref={viewRef as any} collapsable={false} style={{ backgroundColor: COLORS.background }}>
-                <Animated.View entering={FadeInUp.duration(600)} style={styles.header}>
-                    <Text style={styles.title}>Game Over</Text>
-                    <Text style={styles.subtitle}>Final Settlement</Text>
-                    <Text style={styles.sessionTitle}>{session.title}</Text>
-                    {session.type !== 'UNO' && <Text style={styles.potText}>Total Pot: ${potSize}</Text>}
-                </Animated.View>
-
-                <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.section}>
-                    <Text style={styles.sectionTitle}>Rankings & Net Winnings</Text>
-                    {settlements.map((s, index) => (
-                        <View key={s.playerId} style={styles.row}>
-                            <View style={[styles.rankContainer, index === 0 && styles.winnerRank]}>
-                                <Text style={[styles.rankText, index === 0 && styles.winnerText]}>#{s.rank}</Text>
-                            </View>
-                            <Text style={[styles.nameText, index === 0 && styles.winnerName]}>{getPlayerName(s.playerId)}</Text>
-                            {session.type !== 'UNO' && (
-                                <Text style={[
-                                    styles.amountText,
-                                    s.amount >= 0 ? styles.positive : styles.negative
-                                ]}>
-                                    {s.amount >= 0 ? '+' : ''}${s.amount.toFixed(2)}
-                                </Text>
-                            )}
-                        </View>
-                    ))}
-                </Animated.View>
-
-
-
-                {session.type !== 'UNO' && (
-                    <Animated.View entering={FadeInUp.delay(400).duration(600)} style={styles.section}>
-                        <Text style={styles.sectionTitle}>Who Owes Whom</Text>
-                        {transfers.length === 0 ? (
-                            <Text style={styles.emptyText}>No transfers needed.</Text>
-                        ) : (
-                            transfers.map((t, index) => (
-                                <Animated.View
-                                    key={index}
-                                    entering={ZoomIn.delay(600 + (index * 100)).duration(400)}
-                                    style={styles.transferCard}
-                                >
-                                    <View style={styles.transferRow}>
-                                        <View style={styles.transferSide}>
-                                            <Text style={styles.debtorName}>{getPlayerName(t.from)}</Text>
-                                            <Text style={styles.transferLabel}>pays</Text>
-                                        </View>
-                                        <View style={styles.transferArrow}>
-                                            <Text style={styles.arrowText}>➔</Text>
-                                            <Text style={styles.transferAmount}>${t.amount.toFixed(2)}</Text>
-                                        </View>
-                                        <View style={styles.transferSide}>
-                                            <Text style={styles.creditorName}>{getPlayerName(t.to)}</Text>
-                                            <Text style={styles.transferLabel}>receives</Text>
-                                        </View>
-                                    </View>
-                                </Animated.View>
-                            ))
-                        )}
+            <ScrollView style={{ backgroundColor: COLORS.background }}>
+                <View ref={viewRef} style={styles.content} collapsable={false}>
+                    <Animated.View entering={FadeInUp.duration(600)} style={styles.header}>
+                        <Text style={styles.title}>Game Over</Text>
+                        <Text style={styles.subtitle}>Final Settlement</Text>
+                        <Text style={styles.sessionTitle}>{session.title}</Text>
+                        {session.type !== 'UNO' && <Text style={styles.potText}>Total Pot: ${potSize}</Text>}
                     </Animated.View>
-                )}
 
-                <Animated.View entering={FadeInUp.delay(800).duration(600)}>
+                    <Animated.View entering={FadeInUp.delay(200).duration(600)} style={styles.section}>
+                        <Text style={styles.sectionTitle}>Rankings & Net Winnings</Text>
+                        {settlements.map((s, index) => (
+                            <View key={s.playerId} style={styles.row}>
+                                <View style={[styles.rankContainer, index === 0 && styles.winnerRank]}>
+                                    <Text style={[styles.rankText, index === 0 && styles.winnerText]}>#{s.rank}</Text>
+                                </View>
+                                <Text style={[styles.nameText, index === 0 && styles.winnerName]}>{getPlayerName(s.playerId)}</Text>
+                                {session.type !== 'UNO' && (
+                                    <Text style={[
+                                        styles.amountText,
+                                        s.amount >= 0 ? styles.positive : styles.negative
+                                    ]}>
+                                        {s.amount >= 0 ? '+' : ''}${s.amount.toFixed(2)}
+                                    </Text>
+                                )}
+                            </View>
+                        ))}
+                    </Animated.View>
+
+
+
                     {session.type !== 'UNO' && (
-                        <TouchableOpacity style={styles.splitButton} onPress={handleSplitPot}>
-                            <Text style={styles.splitButtonText}>Split Pot / Shake Hands</Text>
-                        </TouchableOpacity>
+                        <Animated.View entering={FadeInUp.delay(400).duration(600)} style={styles.section}>
+                            <Text style={styles.sectionTitle}>Who Owes Whom</Text>
+                            {transfers.length === 0 ? (
+                                <Text style={styles.emptyText}>No transfers needed.</Text>
+                            ) : (
+                                transfers.map((t, index) => (
+                                    <Animated.View
+                                        key={index}
+                                        entering={ZoomIn.delay(600 + (index * 100)).duration(400)}
+                                        style={styles.transferCard}
+                                    >
+                                        <View style={styles.transferRow}>
+                                            <View style={styles.transferSide}>
+                                                <Text style={styles.debtorName}>{getPlayerName(t.from)}</Text>
+                                                <Text style={styles.transferLabel}>pays</Text>
+                                            </View>
+                                            <View style={styles.transferArrow}>
+                                                <Text style={styles.arrowText}>➔</Text>
+                                                <Text style={styles.transferAmount}>${t.amount.toFixed(2)}</Text>
+                                            </View>
+                                            <View style={styles.transferSide}>
+                                                <Text style={styles.creditorName}>{getPlayerName(t.to)}</Text>
+                                                <Text style={styles.transferLabel}>receives</Text>
+                                            </View>
+                                        </View>
+                                    </Animated.View>
+                                ))
+                            )}
+                        </Animated.View>
                     )}
-                    <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-                        <Text style={styles.shareButtonText}>Share Result</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.homeButton} onPress={handleHome}>
-                        <Text style={styles.homeButtonText}>Back to Home</Text>
-                    </TouchableOpacity>
-                </Animated.View>
+
+                    <Animated.View entering={FadeInUp.delay(800).duration(600)}>
+                        {session.type !== 'UNO' && (
+                            <TouchableOpacity style={styles.splitButton} onPress={handleSplitPot}>
+                                <Text style={styles.splitButtonText}>Split Pot / Shake Hands</Text>
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+                            <Text style={styles.shareButtonText}>Share Result</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.homeButton} onPress={handleHome}>
+                            <Text style={styles.homeButtonText}>Back to Home</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                </View>
             </ScrollView>
         </SafeAreaView >
     );

@@ -46,6 +46,7 @@ export const ScoringService = {
         // However, for ranking, we need to consider eliminated players too.
         // Active players are ranked by score (asc).
         // Eliminated players are ranked below active players.
+        // AND Eliminated players should be ranked by how long they survived (Rounds Played).
 
         const activePlayers = session.players.filter(p => !session.eliminatedPlayerIds.includes(p.id));
         const eliminatedPlayers = session.players.filter(p => session.eliminatedPlayerIds.includes(p.id));
@@ -54,12 +55,27 @@ export const ScoringService = {
             .map(p => ({ playerId: p.id, totalScore: totals[p.id], rank: 0 }))
             .sort((a, b) => a.totalScore - b.totalScore);
 
-        // Eliminated players might be ranked by who got eliminated last? Or just by score?
-        // Usually by score (descending) or just all tied at bottom?
-        // Let's sort eliminated by score (asc) too, but they are below active.
+        // Helper to count rounds played
+        const getRoundsPlayed = (playerId: string) => {
+            return session.rounds.filter(r => r.scores.some(s => s.playerId === playerId)).length;
+        };
+
+        // Eliminated players sorted by Rounds Played (Desc) -> Then Score (Asc)
         const rankedEliminated = eliminatedPlayers
-            .map(p => ({ playerId: p.id, totalScore: totals[p.id], rank: 0 }))
-            .sort((a, b) => a.totalScore - b.totalScore);
+            .map(p => ({
+                playerId: p.id,
+                totalScore: totals[p.id],
+                rank: 0,
+                roundsPlayed: getRoundsPlayed(p.id)
+            }))
+            .sort((a, b) => {
+                // Primary: Rounds Played (Descending) - More rounds means survived longer
+                if (b.roundsPlayed !== a.roundsPlayed) {
+                    return b.roundsPlayed - a.roundsPlayed;
+                }
+                // Secondary: Total Score (Ascending) - Lower score is better among those eliminated in same round
+                return a.totalScore - b.totalScore;
+            });
 
         let rank = 1;
         const finalRankings: { playerId: string; totalScore: number; rank: number }[] = [];
@@ -69,7 +85,9 @@ export const ScoringService = {
         });
 
         rankedEliminated.forEach(p => {
-            finalRankings.push({ ...p, rank: rank++ });
+            // Remove roundsPlayed from final object to match return type
+            const { roundsPlayed, ...rest } = p;
+            finalRankings.push({ ...rest, rank: rank++ });
         });
 
         return finalRankings;

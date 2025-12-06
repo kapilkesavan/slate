@@ -4,7 +4,6 @@ import {
     Alert,
     FlatList,
     Modal,
-    SafeAreaView,
     StyleSheet,
     Text,
     TextInput,
@@ -12,6 +11,7 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { PlayerGroup } from '../types';
 import { StorageService } from '../utils/storage';

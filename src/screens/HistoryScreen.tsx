@@ -1,7 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
 import React, { useEffect, useState } from 'react';
-import { FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { GameSession } from '../types';
 import { ScoringService } from '../utils/scoring';

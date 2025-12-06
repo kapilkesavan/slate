@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { GameConfig, GameSession } from '../types';
 import { StorageService } from '../utils/storage';
 
@@ -59,100 +60,102 @@ const GameConfigScreen = () => {
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.container}
-        >
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                <View style={styles.header}>
-                    <Text style={styles.title}>{gameType === 'UNO' ? 'UNO Setup' : 'Game Configuration'}</Text>
-                    <Text style={styles.subtitle}>Customize rules for this session</Text>
-                </View>
-
-                <View style={styles.form}>
-                    {gameType === 'RUMMY' && (
-                        <>
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Buy-in Amount ($)</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    keyboardType="numeric"
-                                    value={config.buyIn.toString()}
-                                    onChangeText={(v) => updateConfig('buyIn', v)}
-                                />
-                            </View>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Scoot / First Drop Penalty</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    keyboardType="numeric"
-                                    value={config.scootPenalty.toString()}
-                                    onChangeText={(v) => updateConfig('scootPenalty', v)}
-                                />
-                            </View>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Middle Scoot / Middle Drop Penalty</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    keyboardType="numeric"
-                                    value={config.middleScootPenalty.toString()}
-                                    onChangeText={(v) => updateConfig('middleScootPenalty', v)}
-                                />
-                            </View>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Max Penalty / Cap</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    keyboardType="numeric"
-                                    value={config.maxPenalty.toString()}
-                                    onChangeText={(v) => updateConfig('maxPenalty', v)}
-                                />
-                            </View>
-                        </>
-                    )}
-
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Elimination Threshold (&gt; Points)</Text>
-                        <TextInput
-                            style={styles.input}
-                            keyboardType="numeric"
-                            value={config.eliminationThreshold.toString()}
-                            onChangeText={(v) => updateConfig('eliminationThreshold', v)}
-                        />
-                        <Text style={styles.helperText}>Player is out if score {'>'} {config.eliminationThreshold}</Text>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.container}
+            >
+                <ScrollView contentContainerStyle={styles.scrollContent}>
+                    <View style={styles.header}>
+                        <Text style={styles.title}>{gameType === 'UNO' ? 'UNO Setup' : 'Game Configuration'}</Text>
+                        <Text style={styles.subtitle}>Customize rules for this session</Text>
                     </View>
 
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Number of Winners</Text>
-                        <View style={styles.winnerSelector}>
-                            {[1, 2, 3].map((count) => (
-                                <TouchableOpacity
-                                    key={count}
-                                    style={[
-                                        styles.winnerButton,
-                                        config.numWinners === count && styles.winnerButtonActive
-                                    ]}
-                                    onPress={() => setConfig(prev => ({ ...prev, numWinners: count }))}
-                                >
-                                    <Text style={[
-                                        styles.winnerButtonText,
-                                        config.numWinners === count && styles.winnerButtonTextActive
-                                    ]}>{count}</Text>
-                                </TouchableOpacity>
-                            ))}
+                    <View style={styles.form}>
+                        {gameType === 'RUMMY' && (
+                            <>
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.label}>Buy-in Amount ($)</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        keyboardType="numeric"
+                                        value={config.buyIn.toString()}
+                                        onChangeText={(v) => updateConfig('buyIn', v)}
+                                    />
+                                </View>
+
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.label}>Scoot / First Drop Penalty</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        keyboardType="numeric"
+                                        value={config.scootPenalty.toString()}
+                                        onChangeText={(v) => updateConfig('scootPenalty', v)}
+                                    />
+                                </View>
+
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.label}>Middle Scoot / Middle Drop Penalty</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        keyboardType="numeric"
+                                        value={config.middleScootPenalty.toString()}
+                                        onChangeText={(v) => updateConfig('middleScootPenalty', v)}
+                                    />
+                                </View>
+
+                                <View style={styles.inputGroup}>
+                                    <Text style={styles.label}>Max Penalty / Cap</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        keyboardType="numeric"
+                                        value={config.maxPenalty.toString()}
+                                        onChangeText={(v) => updateConfig('maxPenalty', v)}
+                                    />
+                                </View>
+                            </>
+                        )}
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Elimination Threshold (&gt; Points)</Text>
+                            <TextInput
+                                style={styles.input}
+                                keyboardType="numeric"
+                                value={config.eliminationThreshold.toString()}
+                                onChangeText={(v) => updateConfig('eliminationThreshold', v)}
+                            />
+                            <Text style={styles.helperText}>Player is out if score {'>'} {config.eliminationThreshold}</Text>
                         </View>
-                        <Text style={styles.helperText}>Default based on {players.length} players</Text>
-                    </View>
-                </View>
 
-                <TouchableOpacity style={styles.startButton} onPress={handleStartGame}>
-                    <Text style={styles.startButtonText}>Start Game</Text>
-                </TouchableOpacity>
-            </ScrollView>
-        </KeyboardAvoidingView>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Number of Winners</Text>
+                            <View style={styles.winnerSelector}>
+                                {[1, 2, 3].map((count) => (
+                                    <TouchableOpacity
+                                        key={count}
+                                        style={[
+                                            styles.winnerButton,
+                                            config.numWinners === count && styles.winnerButtonActive
+                                        ]}
+                                        onPress={() => setConfig(prev => ({ ...prev, numWinners: count }))}
+                                    >
+                                        <Text style={[
+                                            styles.winnerButtonText,
+                                            config.numWinners === count && styles.winnerButtonTextActive
+                                        ]}>{count}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                            <Text style={styles.helperText}>Default based on {players.length} players</Text>
+                        </View>
+                    </View>
+
+                    <TouchableOpacity style={styles.startButton} onPress={handleStartGame}>
+                        <Text style={styles.startButtonText}>Start Game</Text>
+                    </TouchableOpacity>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 };
 

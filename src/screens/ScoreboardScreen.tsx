@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Modal,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
@@ -13,6 +12,7 @@ import {
     View
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { GameRound, GameSession, Player, RoundScore } from '../types';
@@ -23,7 +23,7 @@ const ScoreboardScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
     const { sessionId, readOnly } = route.params || {};
-    const viewRef = useRef<ScrollView>(null);
+    const viewRef = useRef<View>(null);
 
     const [session, setSession] = useState<GameSession | null>(null);
     const [totals, setTotals] = useState<Record<string, number>>({});
@@ -381,132 +381,168 @@ const ScoreboardScreen = () => {
                     <View>
                         <ScrollView
                             showsVerticalScrollIndicator={true}
-                            ref={viewRef}
-                            collapsable={false}
+                            style={{ flexGrow: 0 }}
                         >
-                            {/* Header Row */}
-                            <View style={styles.tableRow}>
-                                <View style={[styles.cell, styles.roundColumn, styles.headerBackground]}>
-                                    <Text style={styles.headerText}>Round</Text>
-                                </View>
-                                {session.players.map(player => {
-                                    const rank = rankings.find(r => r.playerId === player.id)?.rank;
-                                    const isEliminated = session.eliminatedPlayerIds.includes(player.id);
-                                    let statusText = "";
-
-                                    if (!session.isActive) {
-                                        statusText = rank ? ` (#${rank})` : "";
-                                    } else if (isEliminated) {
-                                        statusText = " (Out)";
-                                    } else if (rank) {
-                                        statusText = ` (#${rank})`;
-                                    }
-
-                                    return (
-                                        <TouchableOpacity
-                                            key={player.id}
-                                            style={[
-                                                styles.cell,
-                                                styles.playerColumn,
-                                                styles.headerBackground,
-                                                isEliminated && styles.eliminatedHeader
-                                            ]}
-                                            onPress={() => {
-                                                const activeCount = session.players.length - session.eliminatedPlayerIds.length;
-                                                if (activeCount > 1) {
-                                                    handlePlayerPress(player);
-                                                } else {
-                                                    Alert.alert('Game Over', 'Cannot re-buy when only one player remains.');
-                                                }
-                                            }}
-                                            disabled={readOnly || !isEliminated}
-                                        >
-                                            <Text style={styles.headerText} numberOfLines={1}>
-                                                {player.name}
-                                                <Text style={{ fontSize: 10, fontWeight: 'normal' }}>{statusText}</Text>
-                                            </Text>
-                                            {!readOnly && isEliminated && (
-                                                <Text style={styles.eliminatedLabel}>
-                                                    {(session.players.length - session.eliminatedPlayerIds.length) > 1 ? 'Tap to Rebuy' : 'Eliminated'}
-                                                </Text>
-                                            )}
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-
-                            {/* Data Rows */}
-                            {(() => {
-                                let roundCounter = 0;
-                                const rows: any[] = [];
-                                let currentRebuyRow: any = null;
-
-                                session.rounds.forEach((round) => {
-                                    const isRebuy = round.id.startsWith('rebuy');
-                                    const isJoin = round.id.startsWith('join');
-
-                                    if (isRebuy || isJoin) {
-                                        // We can merge joins into rebuys or keep them separate?
-                                        // Let's treat them as special rows.
-                                        // Actually, the current logic merges consecutive rebuys.
-                                        // Let's just push them as separate rows for now to be safe, or merge if we want cleaner UI.
-                                        // Simple: Just push as a row.
-                                        const scoreMap: Record<string, number> = {};
-                                        round.scores.forEach(s => scoreMap[s.playerId] = s.score);
-                                        rows.push({
-                                            id: round.id,
-                                            type: isRebuy ? 'rebuy' : 'join',
-                                            roundNumber: 0,
-                                            scores: scoreMap
-                                        });
-                                    } else {
-                                        currentRebuyRow = null;
-                                        roundCounter++;
-                                        const scoreMap: Record<string, number> = {};
-                                        round.scores.forEach(s => scoreMap[s.playerId] = s.score);
-                                        rows.push({
-                                            id: round.id,
-                                            type: 'round',
-                                            roundNumber: roundCounter,
-                                            scores: scoreMap
-                                        });
-                                    }
-                                });
-
-                                return rows.map((row) => (
-                                    <Animated.View key={row.id} entering={FadeInDown.duration(400)} style={styles.tableRow}>
-                                        <View style={[styles.cell, styles.roundColumn]}>
-                                            <Text style={styles.cellText}>
-                                                {row.type === 'rebuy' ? 'Rebuy' : row.type === 'join' ? 'Join' : row.roundNumber}
-                                            </Text>
-                                        </View>
-                                        {session.players.map(player => {
-                                            const score = row.scores[player.id] !== undefined ? row.scores[player.id] : '-';
-                                            return (
-                                                <TouchableOpacity
-                                                    key={player.id}
-                                                    style={[styles.cell, styles.playerColumn]}
-                                                    onPress={() => row.type === 'round' && handleScorePress(row.id, player.id, typeof score === 'number' ? score : 0)}
-                                                    disabled={readOnly || row.type !== 'round'}
-                                                >
-                                                    <Text style={styles.cellText}>{score}</Text>
-                                                </TouchableOpacity>
-                                            );
-                                        })}
-                                    </Animated.View>
-                                ));
-                            })()}
-
-                            {/* Total Row */}
-                            <View style={[styles.tableRow, styles.totalRow]}>
-                                <View style={[styles.cell, styles.roundColumn]}>
-                                    <Text style={styles.totalText}>Total</Text>
-                                </View>
-                                {session.players.map(player => (
-                                    <View key={player.id} style={[styles.cell, styles.playerColumn]}>
-                                        <Text style={styles.totalText}>{totals[player.id] || 0}</Text>
+                            <View ref={viewRef} collapsable={false} style={{ backgroundColor: COLORS.background }}>
+                                {/* Header Row */}
+                                <View style={styles.tableRow}>
+                                    <View style={[styles.cell, styles.roundColumn, styles.headerBackground]}>
+                                        <Text style={styles.headerText}>Round</Text>
                                     </View>
-                                ))}
+                                    {session.players.map(player => {
+                                        const rank = rankings.find(r => r.playerId === player.id)?.rank;
+                                        const isEliminated = session.eliminatedPlayerIds.includes(player.id);
+                                        let statusText = "";
+
+                                        if (!session.isActive) {
+                                            statusText = rank ? ` (#${rank})` : "";
+                                        } else if (isEliminated) {
+                                            statusText = " (Out)";
+                                        } else if (rank) {
+                                            statusText = ` (#${rank})`;
+                                        }
+
+                                        return (
+                                            <TouchableOpacity
+                                                key={player.id}
+                                                style={[
+                                                    styles.cell,
+                                                    styles.playerColumn,
+                                                    styles.headerBackground,
+                                                    isEliminated && styles.eliminatedHeader
+                                                ]}
+                                                onPress={() => {
+                                                    const activeCount = session.players.length - session.eliminatedPlayerIds.length;
+                                                    if (activeCount > 1) {
+                                                        handlePlayerPress(player);
+                                                    } else {
+                                                        Alert.alert('Game Over', 'Cannot re-buy when only one player remains.');
+                                                    }
+                                                }}
+                                                disabled={readOnly || !isEliminated}
+                                            >
+                                                <Text style={styles.headerText} numberOfLines={1}>
+                                                    {player.name}
+                                                    <Text style={{ fontSize: 10, fontWeight: 'normal' }}>{statusText}</Text>
+                                                </Text>
+                                                {!readOnly && isEliminated && (
+                                                    <Text style={styles.eliminatedLabel}>
+                                                        {(session.players.length - session.eliminatedPlayerIds.length) > 1 ? 'Tap to Rebuy' : 'Eliminated'}
+                                                    </Text>
+                                                )}
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+
+                                {/* Data Rows */}
+                                {(() => {
+                                    let roundCounter = 0;
+                                    const rows: any[] = [];
+                                    let currentRebuyRow: any = null;
+
+                                    session.rounds.forEach((round) => {
+                                        const isRebuy = round.id.startsWith('rebuy');
+                                        const isJoin = round.id.startsWith('join');
+
+                                        if (isRebuy || isJoin) {
+                                            const scoreMap: Record<string, number> = {};
+                                            round.scores.forEach(s => scoreMap[s.playerId] = s.score);
+                                            rows.push({
+                                                id: round.id,
+                                                type: isRebuy ? 'rebuy' : 'join',
+                                                roundNumber: 0,
+                                                scores: scoreMap
+                                            });
+                                        } else {
+                                            currentRebuyRow = null;
+                                            roundCounter++;
+                                            const scoreMap: Record<string, number> = {};
+                                            round.scores.forEach(s => scoreMap[s.playerId] = s.score);
+                                            rows.push({
+                                                id: round.id,
+                                                type: 'round',
+                                                roundNumber: roundCounter,
+                                                scores: scoreMap
+                                            });
+                                        }
+                                    });
+
+                                    // Helper to calculate winning streak ending at this round
+                                    const getWinningStreak = (playerId: string, currentRoundIndex: number) => {
+                                        let streak = 0;
+                                        // Check backwards from current round
+                                        for (let i = currentRoundIndex; i >= 0; i--) {
+                                            const round = session.rounds[i];
+
+                                            // Skip special rounds (join/rebuy)
+                                            if (round.id.startsWith('join') || round.id.startsWith('rebuy')) {
+                                                continue;
+                                            }
+
+                                            const score = round.scores.find(s => s.playerId === playerId)?.score;
+
+                                            // If score is 0, it's a win.
+                                            if (score === 0) {
+                                                streak++;
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                        return streak;
+                                    };
+
+                                    return rows.map((row, rowIndex) => (
+                                        <Animated.View key={row.id} entering={FadeInDown.duration(400)} style={styles.tableRow}>
+                                            <View style={[styles.cell, styles.roundColumn]}>
+                                                <Text style={styles.cellText}>
+                                                    {row.type === 'rebuy' ? 'Rebuy' : row.type === 'join' ? 'Join' : row.roundNumber}
+                                                </Text>
+                                            </View>
+                                            {session.players.map(player => {
+                                                const score = row.scores[player.id] !== undefined ? row.scores[player.id] : '-';
+
+                                                // Calculate streak only for normal rounds and if score is 0
+                                                let showFire = false;
+                                                if (row.type === 'round' && score === 0) {
+                                                    const sessionRoundIndex = session.rounds.findIndex(r => r.id === row.id);
+                                                    if (sessionRoundIndex >= 0) {
+                                                        const streak = getWinningStreak(player.id, sessionRoundIndex);
+                                                        if (streak >= 3) {
+                                                            showFire = true;
+                                                        }
+                                                    }
+                                                }
+
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={player.id}
+                                                        style={[styles.cell, styles.playerColumn]}
+                                                        onPress={() => row.type === 'round' && handleScorePress(row.id, player.id, typeof score === 'number' ? score : 0)}
+                                                        disabled={readOnly || row.type !== 'round'}
+                                                    >
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                            <Text style={styles.cellText}>{score}</Text>
+                                                            {showFire && <Text style={{ marginLeft: 4, fontSize: 12 }}>🔥</Text>}
+                                                        </View>
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </Animated.View>
+                                    ));
+                                })()}
+
+                                {/* Total Row */}
+                                <View style={[styles.tableRow, styles.totalRow]}>
+                                    <View style={[styles.cell, styles.roundColumn]}>
+                                        <Text style={styles.totalText}>Total</Text>
+                                    </View>
+                                    {session.players.map(player => (
+                                        <View key={player.id} style={[styles.cell, styles.playerColumn]}>
+                                            <Text style={styles.totalText}>{totals[player.id] || 0}</Text>
+                                        </View>
+                                    ))}
+                                </View>
                             </View>
                         </ScrollView>
                     </View>
@@ -540,15 +576,43 @@ const ScoreboardScreen = () => {
                             if (session.eliminatedPlayerIds.includes(player.id)) return null;
                             return (
                                 <View key={player.id} style={styles.inputRow}>
-                                    <Text style={styles.inputLabel}>{player.name}</Text>
-                                    <TextInput
-                                        style={styles.scoreInput}
-                                        keyboardType="numeric"
-                                        placeholder="0"
-                                        value={currentRoundScores[player.id] || ''}
-                                        onChangeText={(text) => setCurrentRoundScores(prev => ({ ...prev, [player.id]: text }))}
-                                        placeholderTextColor={COLORS.textSecondary}
-                                    />
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                        <Text style={styles.inputLabel}>{player.name}</Text>
+                                    </View>
+                                    <View style={{ alignItems: 'flex-end' }}>
+                                        <TextInput
+                                            style={styles.scoreInput}
+                                            keyboardType="numeric"
+                                            placeholder="0"
+                                            value={currentRoundScores[player.id] || ''}
+                                            onChangeText={(text) => setCurrentRoundScores(prev => ({ ...prev, [player.id]: text }))}
+                                            placeholderTextColor={COLORS.textSecondary}
+                                        />
+                                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                                            {[
+                                                { label: 'S', value: session.config.scootPenalty },
+                                                { label: 'M', value: session.config.middleScootPenalty },
+                                                { label: 'F', value: session.config.maxPenalty }
+                                            ].map((opt) => (
+                                                <TouchableOpacity
+                                                    key={opt.label}
+                                                    style={{
+                                                        backgroundColor: COLORS.card,
+                                                        borderWidth: 1,
+                                                        borderColor: COLORS.border,
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 4,
+                                                        borderRadius: 4
+                                                    }}
+                                                    onPress={() => setCurrentRoundScores(prev => ({ ...prev, [player.id]: opt.value.toString() }))}
+                                                >
+                                                    <Text style={{ fontSize: 10, color: COLORS.textSecondary, fontWeight: 'bold' }}>
+                                                        {opt.label}:{opt.value}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    </View>
                                 </View>
                             );
                         })}

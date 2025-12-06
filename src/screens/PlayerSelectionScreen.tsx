@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { Player } from '../types';
 import { StorageService } from '../utils/storage';
@@ -18,73 +19,69 @@ import { StorageService } from '../utils/storage';
 const PlayerSelectionScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
-    const { groupId, groupName } = route.params || {};
+    const { groupId, groupName, gameType = 'RUMMY' } = route.params || {};
 
     const [allPlayers, setAllPlayers] = useState<Player[]>([]);
-    const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([]);
     const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([]);
     const [isModalVisible, setModalVisible] = useState(false);
     const [newPlayerName, setNewPlayerName] = useState('');
     const [newPlayerAlias, setNewPlayerAlias] = useState('');
-
     const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+    const [groupPlayerIds, setGroupPlayerIds] = useState<string[]>([]);
 
     useEffect(() => {
         loadPlayers();
-    }, [groupId]);
+    }, []);
 
     const loadPlayers = async () => {
-        const storedPlayers = await StorageService.getPlayers();
-        setAllPlayers(storedPlayers);
+        const players = await StorageService.getPlayers();
+        setAllPlayers(players);
 
         if (groupId) {
             const groups = await StorageService.getGroups();
-            const currentGroup = groups.find(g => g.id === groupId);
-            if (currentGroup) {
-                const groupPlayers = storedPlayers.filter(p => currentGroup.playerIds.includes(p.id));
-                setFilteredPlayers(groupPlayers);
-            } else {
-                setFilteredPlayers(storedPlayers);
+            const group = groups.find(g => g.id === groupId);
+            if (group) {
+                setGroupPlayerIds(group.playerIds);
+                const groupPlayers = players.filter(p => group.playerIds.includes(p.id));
+                setSelectedPlayers(groupPlayers);
             }
+        }
+    };
+
+    const toggleSelection = (player: Player) => {
+        if (selectedPlayers.find(p => p.id === player.id)) {
+            setSelectedPlayers(prev => prev.filter(p => p.id !== player.id));
         } else {
-            setFilteredPlayers(storedPlayers);
+            setSelectedPlayers(prev => [...prev, player]);
         }
     };
 
     const handleSavePlayer = async () => {
         if (!newPlayerName.trim()) {
-            Alert.alert('Error', 'Player name is required');
+            Alert.alert('Error', 'Please enter a player name');
             return;
         }
 
         if (editingPlayer) {
-            // Update existing player
-            const updatedPlayer: Player = {
-                ...editingPlayer,
-                name: newPlayerName.trim(),
-                alias: newPlayerAlias.trim() || undefined,
-            };
+            const updatedPlayer = { ...editingPlayer, name: newPlayerName.trim(), alias: newPlayerAlias.trim() };
             await StorageService.updatePlayer(updatedPlayer);
+            setEditingPlayer(null);
         } else {
-            // Create new player
             const newPlayer: Player = {
                 id: Date.now().toString(),
                 name: newPlayerName.trim(),
-                alias: newPlayerAlias.trim() || undefined,
+                alias: newPlayerAlias.trim()
             };
             await StorageService.addPlayer(newPlayer);
 
-            if (groupId) {
-                await StorageService.addPlayerToGroup(groupId, newPlayer.id);
-            }
+            // Auto-select the new player
             setSelectedPlayers(prev => [...prev, newPlayer]);
         }
 
-        await loadPlayers();
         setNewPlayerName('');
         setNewPlayerAlias('');
-        setEditingPlayer(null);
         setModalVisible(false);
+        loadPlayers();
     };
 
     const handleEditPlayer = (player: Player) => {
@@ -97,7 +94,7 @@ const PlayerSelectionScreen = () => {
     const handleDeletePlayer = (player: Player) => {
         Alert.alert(
             'Delete Player',
-            `Are you sure you want to delete "${player.name}"? This will remove them from the list but keep historical game records.`,
+            `Are you sure you want to delete ${player.name}?`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -106,28 +103,20 @@ const PlayerSelectionScreen = () => {
                     onPress: async () => {
                         await StorageService.deletePlayer(player.id);
                         setSelectedPlayers(prev => prev.filter(p => p.id !== player.id));
-                        await loadPlayers();
+                        loadPlayers();
                     }
                 }
             ]
         );
     };
 
-    const toggleSelection = (player: Player) => {
-        if (selectedPlayers.find(p => p.id === player.id)) {
-            setSelectedPlayers(prev => prev.filter(p => p.id !== player.id));
-        } else {
-            setSelectedPlayers(prev => [...prev, player]);
-        }
-    };
-
     const handleAddToGroup = async (player: Player) => {
         if (groupId) {
             await StorageService.addPlayerToGroup(groupId, player.id);
-            await loadPlayers();
-            toggleSelection(player);
-        } else {
-            toggleSelection(player);
+            setGroupPlayerIds(prev => [...prev, player.id]);
+            if (!selectedPlayers.find(p => p.id === player.id)) {
+                setSelectedPlayers(prev => [...prev, player]);
+            }
         }
     };
 
@@ -136,11 +125,15 @@ const PlayerSelectionScreen = () => {
             Alert.alert('Error', 'Please select at least 2 players');
             return;
         }
-        navigation.navigate('GameConfig', { players: selectedPlayers, gameType: route.params?.gameType });
+        navigation.navigate('GameConfig', { players: selectedPlayers, gameType });
     };
 
+    const filteredPlayers = groupId
+        ? allPlayers.filter(p => groupPlayerIds.includes(p.id))
+        : allPlayers;
+
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <View style={styles.headerTop}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -239,6 +232,7 @@ const PlayerSelectionScreen = () => {
 
                     <Text style={styles.sectionHeader}>{groupId ? `Players in ${groupName}` : 'All Players'}</Text>
                     <DraggableFlatList
+                        containerStyle={{ flex: 1 }}
                         data={filteredPlayers}
                         keyExtractor={(item) => item.id}
                         renderItem={({ item }) => {
@@ -289,7 +283,7 @@ const PlayerSelectionScreen = () => {
                     />
                 </View>
             </Modal>
-        </View>
+        </SafeAreaView>
     );
 };
 
