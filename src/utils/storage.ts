@@ -49,6 +49,14 @@ export const StorageService = {
         const players = await StorageService.getPlayers();
         const updatedPlayers = players.filter(p => p.id !== playerId);
         await StorageService.savePlayers(updatedPlayers);
+
+        // Also remove player from all groups
+        const groups = await StorageService.getGroups();
+        const updatedGroups = groups.map(group => ({
+            ...group,
+            playerIds: group.playerIds.filter(id => id !== playerId)
+        }));
+        await StorageService.saveGroups(updatedGroups);
     },
 
     // --- Game History ---
@@ -59,6 +67,25 @@ export const StorageService = {
         } catch (e) {
             console.error('Error reading history', e);
             return [];
+        }
+    },
+
+    deleteGameSession: async (sessionId: string): Promise<void> => {
+        const history = await StorageService.getGameHistory();
+        const updatedHistory = history.filter(s => s.id !== sessionId);
+        try {
+            await AsyncStorage.setItem(KEYS.GAME_HISTORY, JSON.stringify(updatedHistory));
+        } catch (e) {
+            console.error('Error deleting game session', e);
+        }
+
+        // Also delete from settlements
+        const settlements = await StorageService.getSettlements();
+        const updatedSettlements = settlements.filter((s: any) => s.id !== sessionId);
+        try {
+            await AsyncStorage.setItem('score_tracker_settlements', JSON.stringify(updatedSettlements));
+        } catch (e) {
+            console.error('Error deleting settlement', e);
         }
     },
 
@@ -78,6 +105,32 @@ export const StorageService = {
             await AsyncStorage.setItem(KEYS.GAME_HISTORY, JSON.stringify(updatedHistory));
         } catch (e) {
             console.error('Error saving history', e);
+        }
+    },
+
+    // --- Settlements ---
+    getSettlements: async (): Promise<any[]> => {
+        try {
+            // We use a new key for settlements or just derive? 
+            // The requirement implies a separate list. Let's use a new key.
+            const jsonValue = await AsyncStorage.getItem('score_tracker_settlements');
+            return jsonValue != null ? JSON.parse(jsonValue) : [];
+        } catch (e) {
+            console.error('Error reading settlements', e);
+            return [];
+        }
+    },
+
+    saveSettlementSnapshot: async (snapshot: any): Promise<void> => {
+        const settlements = await StorageService.getSettlements();
+        // Remove existing snapshot for this session if it exists (to allow updates/re-settlements)
+        const otherSettlements = settlements.filter((s: any) => s.id !== snapshot.id);
+
+        const updatedSettlements = [snapshot, ...otherSettlements];
+        try {
+            await AsyncStorage.setItem('score_tracker_settlements', JSON.stringify(updatedSettlements));
+        } catch (e) {
+            console.error('Error saving settlement', e);
         }
     },
 

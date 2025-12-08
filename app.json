@@ -4,7 +4,7 @@
     "slug": "slate",
     "version": "1.1.8",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icon_padded.png",
     "scheme": "scoretracker",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -15,7 +15,7 @@
       "package": "com.scoretracker.app",
       "adaptiveIcon": {
         "backgroundColor": "#2C3E50",
-        "foregroundImage": "./assets/images/icon.png"
+        "foregroundImage": "./assets/images/icon_padded.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false

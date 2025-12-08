@@ -48,3 +48,20 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+## Build Releases (Locally)
+
+To build the Android APK locally without using EAS Cloud (which requires login):
+
+1.  **Ensure you have Android SDK installed** on your machine (via Android Studio).
+2.  **Generate Native Code** (if not already done via `android` folder existence):
+    ```bash
+    npx expo prebuild --platform android
+    ```
+3.  **Build the Release APK**:
+    ```bash
+    cd android && ./gradlew assembleRelease
+    ```
+
+The output APK will be located at:
+`android/app/build/outputs/apk/release/app-release.apk`

@@ -49,7 +49,7 @@ export default function App() {
                         <Stack.Screen
                             name="Settlement"
                             component={SettlementScreen}
-                            options={{ title: 'Settlement', headerShown: false }}
+                            options={{ title: 'Settlement' }}
                         />
                         <Stack.Screen
                             name="History"

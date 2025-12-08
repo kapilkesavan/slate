@@ -52,3 +52,14 @@ export interface Settlement {
     rank: number;
     netTransfer?: number; // For "Who owes Whom" logic
 }
+
+export interface SettlementSnapshot {
+    id: string; // Unique ID for the snapshot
+    sessionId: string;
+    gameTitle: string;
+    gameType: GameType;
+    date: number;
+    potSize: number;
+    settlements: Settlement[]; // The calculated settlements
+    transfers: { from: string; to: string; amount: number }[]; // Who owes whom
+}

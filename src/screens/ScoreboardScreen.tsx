@@ -34,6 +34,10 @@ const ScoreboardScreen = () => {
     const [isScoreModalVisible, setScoreModalVisible] = useState(false);
     const [currentRoundScores, setCurrentRoundScores] = useState<Record<string, string>>({});
 
+    // Rebuy Modal State
+    const [isRebuyModalVisible, setRebuyModalVisible] = useState(false);
+    const [rebuyConfig, setRebuyConfig] = useState<{ playerId: string; cost: number; points: number } | null>(null);
+
     // Edit Score State
     const [isEditModalVisible, setEditModalVisible] = useState(false);
     const [editingScore, setEditingScore] = useState<{ roundId: string; playerId: string; currentScore: string } | null>(null);
@@ -215,52 +219,62 @@ const ScoreboardScreen = () => {
         setCurrentRoundScores({});
     };
 
-    const handleRebuy = async (playerId: string) => {
+    const initiateRebuy = (playerId: string) => {
         if (!session) return;
 
-        Alert.alert(
-            'Re-buy',
-            session.type === 'UNO' ? 'Allow re-entry?' : `Allow re-buy for $${session.config.buyIn}?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Confirm',
-                    onPress: async () => {
-                        const updatedSession = { ...session };
+        const currentTotals = ScoringService.calculateTotalScores(session);
+        const activeScores = session.players
+            .filter(p => !session.eliminatedPlayerIds.includes(p.id))
+            .map(p => currentTotals[p.id]);
 
-                        updatedSession.rebuys = {
-                            ...updatedSession.rebuys,
-                            [playerId]: (updatedSession.rebuys[playerId] || 0) + 1
-                        };
+        const maxActiveScore = activeScores.length > 0 ? Math.max(...activeScores) : 0;
+        // In Rummy high score is bad, so rejoining at max score is the penalty.
+        // Wait, "Allow Re-buy... rejoin ... with [Score] points."
+        // Logic: Set them to Max Active Score?
+        // Yes, existing logic was: adjustment = maxActiveScore - currentTotals[playerId];
+        // So their new Total will be maxActiveScore.
 
-                        updatedSession.eliminatedPlayerIds = updatedSession.eliminatedPlayerIds.filter(id => id !== playerId);
+        setRebuyConfig({
+            playerId,
+            cost: session.config.buyIn,
+            points: maxActiveScore
+        });
+        setRebuyModalVisible(true);
+    };
 
-                        const currentTotals = ScoringService.calculateTotalScores(session);
-                        const activeScores = session.players
-                            .filter(p => !session.eliminatedPlayerIds.includes(p.id))
-                            .map(p => currentTotals[p.id]);
+    const confirmRebuy = async () => {
+        if (!session || !rebuyConfig) return;
 
-                        const maxActiveScore = Math.max(...activeScores, 0);
-                        const adjustment = maxActiveScore - currentTotals[playerId];
+        const { playerId, points } = rebuyConfig;
 
-                        const adjustmentRound: GameRound = {
-                            id: `rebuy-${Date.now()}`,
-                            scores: [{ playerId, score: adjustment }],
-                            timestamp: Date.now(),
-                        };
+        const updatedSession = { ...session };
 
-                        updatedSession.rounds.push(adjustmentRound);
+        updatedSession.rebuys = {
+            ...updatedSession.rebuys,
+            [playerId]: (updatedSession.rebuys[playerId] || 0) + 1
+        };
 
-                        await saveSession(updatedSession);
-                    }
-                }
-            ]
-        );
+        updatedSession.eliminatedPlayerIds = updatedSession.eliminatedPlayerIds.filter(id => id !== playerId);
+
+        const currentTotals = ScoringService.calculateTotalScores(session);
+        const adjustment = points - currentTotals[playerId];
+
+        const adjustmentRound: GameRound = {
+            id: `rebuy-${Date.now()}`,
+            scores: [{ playerId, score: adjustment }],
+            timestamp: Date.now(),
+        };
+
+        updatedSession.rounds.push(adjustmentRound);
+
+        await saveSession(updatedSession);
+        setRebuyModalVisible(false);
+        setRebuyConfig(null);
     };
 
     const handlePlayerPress = (player: Player) => {
         if (session?.eliminatedPlayerIds.includes(player.id)) {
-            handleRebuy(player.id);
+            initiateRebuy(player.id);
         }
     };
 
@@ -328,9 +342,21 @@ const ScoreboardScreen = () => {
                     style: 'destructive',
                     onPress: async () => {
                         if (session) {
-                            const endedSession = { ...session, isActive: false, endTime: Date.now() };
-                            await saveSession(endedSession);
-                            navigation.navigate('Settlement', { sessionId: session.id });
+                            // Note: ScoringService/SettlementService needs the session.
+                            // We need to import SettlementService here if we want to calc logic, OR just save basic info and let SettlementScreen calc?
+                            // No, Snapshot implies storing the result so we don't have to recalc/what if logic changes.
+                            // However, I don't have SettlementService imported. I will import it if I need it, 
+                            // BUT simpler: navigate to Settlement, and have SettlementScreen save the snapshot on mount if it doesn't exist?
+                            // Or import SettlementService. Let's import involved modules or move on.
+                            // Actually better: just save the GameSession as finished. 
+                            // *Wait*, requirement: "Tab 2: Settlements: Display a specific history... When a game ends, save a snapshot..."
+                            // I should try to save it now. I'll need to lazy-load SettlementService or move logic.
+                            // Let's rely on importing it. I will add the import to the top of file later or now?
+                            // I can't add imports easily with `replace_file_content` if they are far apart.
+                            // I will implement "Snapshot" creation inside SettlementScreen's `useEffect` or `loadData` 
+                            // to ensure consistent calculation. That is safer.
+
+                            navigation.navigate('Settlement', { sessionId: session.id, isPreview: true });
                         }
                     }
                 }
@@ -345,17 +371,11 @@ const ScoreboardScreen = () => {
             <View style={styles.header}>
                 <TouchableOpacity
                     onPress={() => {
-                        if (readOnly) {
-                            if (navigation.canGoBack()) {
-                                navigation.goBack();
-                            } else {
-                                navigation.navigate('History');
-                            }
+                        if (navigation.canGoBack()) {
+                            navigation.goBack();
                         } else {
-                            navigation.reset({
-                                index: 0,
-                                routes: [{ name: 'Home' }],
-                            });
+                            // Fallback if no history (unlikely if started from Home)
+                            navigation.navigate('Home');
                         }
                     }}
                     style={styles.backButton}
@@ -392,6 +412,8 @@ const ScoreboardScreen = () => {
                                     {session.players.map(player => {
                                         const rank = rankings.find(r => r.playerId === player.id)?.rank;
                                         const isEliminated = session.eliminatedPlayerIds.includes(player.id);
+                                        const isWinner = !session.isActive && rank === 1;
+
                                         let statusText = "";
 
                                         if (!session.isActive) {
@@ -409,7 +431,8 @@ const ScoreboardScreen = () => {
                                                     styles.cell,
                                                     styles.playerColumn,
                                                     styles.headerBackground,
-                                                    isEliminated && styles.eliminatedHeader
+                                                    isEliminated && styles.eliminatedHeader,
+                                                    isWinner && styles.winnerHeader
                                                 ]}
                                                 onPress={() => {
                                                     const activeCount = session.players.length - session.eliminatedPlayerIds.length;
@@ -502,6 +525,11 @@ const ScoreboardScreen = () => {
                                             {session.players.map(player => {
                                                 const score = row.scores[player.id] !== undefined ? row.scores[player.id] : '-';
 
+                                                // Check elimination for styling
+                                                const isEliminated = session.eliminatedPlayerIds.includes(player.id);
+                                                const rank = rankings.find(r => r.playerId === player.id)?.rank;
+                                                const isWinner = !session.isActive && rank === 1;
+
                                                 // Calculate streak only for normal rounds and if score is 0
                                                 let showFire = false;
                                                 if (row.type === 'round' && score === 0) {
@@ -517,7 +545,12 @@ const ScoreboardScreen = () => {
                                                 return (
                                                     <TouchableOpacity
                                                         key={player.id}
-                                                        style={[styles.cell, styles.playerColumn]}
+                                                        style={[
+                                                            styles.cell,
+                                                            styles.playerColumn,
+                                                            isEliminated && styles.eliminatedCell,
+                                                            isWinner && styles.winnerCell
+                                                        ]}
                                                         onPress={() => row.type === 'round' && handleScorePress(row.id, player.id, typeof score === 'number' ? score : 0)}
                                                         disabled={readOnly || row.type !== 'round'}
                                                     >
@@ -537,11 +570,23 @@ const ScoreboardScreen = () => {
                                     <View style={[styles.cell, styles.roundColumn]}>
                                         <Text style={styles.totalText}>Total</Text>
                                     </View>
-                                    {session.players.map(player => (
-                                        <View key={player.id} style={[styles.cell, styles.playerColumn]}>
-                                            <Text style={styles.totalText}>{totals[player.id] || 0}</Text>
-                                        </View>
-                                    ))}
+                                    {session.players.map(player => {
+                                        const isEliminated = session.eliminatedPlayerIds.includes(player.id);
+                                        const rank = rankings.find(r => r.playerId === player.id)?.rank;
+                                        const isWinner = !session.isActive && rank === 1;
+
+                                        return (
+                                            <View key={player.id}
+                                                style={[
+                                                    styles.cell,
+                                                    styles.playerColumn,
+                                                    isEliminated && styles.eliminatedTotal,
+                                                    isWinner && styles.winnerTotal
+                                                ]}>
+                                                <Text style={[styles.totalText, isEliminated && { color: COLORS.danger }]}>{totals[player.id] || 0}</Text>
+                                            </View>
+                                        )
+                                    })}
                                 </View>
                             </View>
                         </ScrollView>
@@ -673,6 +718,35 @@ const ScoreboardScreen = () => {
                     </View>
                 </View>
             </Modal>
+
+            {/* Rebuy Confirmation Modal */}
+            <Modal visible={isRebuyModalVisible} animationType="fade" transparent={true}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.smallModalContainer}>
+                        <Text style={styles.modalTitle}>Re-Buy Confirmation</Text>
+                        {rebuyConfig && (
+                            <View style={{ marginVertical: SPACING.m }}>
+                                <Text style={{ fontSize: FONT_SIZE.m, color: COLORS.text, marginBottom: SPACING.s, textAlign: 'center' }}>
+                                    {session.type !== 'UNO'
+                                        ? `Allow Re-buy for $${rebuyConfig.cost}?`
+                                        : 'Allow Re-entry?'}
+                                </Text>
+                                <Text style={{ fontSize: FONT_SIZE.m, color: COLORS.textSecondary, textAlign: 'center' }}>
+                                    This player will rejoin the game with <Text style={{ fontWeight: 'bold', color: COLORS.text }}>{rebuyConfig.points}</Text> points.
+                                </Text>
+                            </View>
+                        )}
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setRebuyModalVisible(false)}>
+                                <Text style={styles.modalButtonText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={confirmRebuy}>
+                                <Text style={styles.modalButtonText}>Confirm</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView >
     );
 };
@@ -701,11 +775,17 @@ const styles = StyleSheet.create({
     headerText: { fontWeight: 'bold', color: COLORS.text, textAlign: 'center', fontSize: FONT_SIZE.s },
     cellText: { fontSize: FONT_SIZE.m, color: COLORS.text },
 
-    totalRow: { backgroundColor: '#E6FFE6', borderTopWidth: 2, borderTopColor: COLORS.success },
+    totalRow: { backgroundColor: '#E6FFE6', borderTopWidth: 2, borderTopColor: COLORS.success }, // default success green
     totalText: { fontWeight: 'bold', fontSize: FONT_SIZE.m, color: COLORS.black },
 
     eliminatedHeader: { backgroundColor: '#FFF0F0' },
+    eliminatedCell: { backgroundColor: '#FFF0F0' }, // Light red for cells
+    eliminatedTotal: { backgroundColor: '#FFE0E0' }, // Slightly darker red for total
     eliminatedLabel: { fontSize: FONT_SIZE.xs, color: COLORS.danger, marginTop: 2, fontWeight: 'bold', textAlign: 'center' },
+
+    winnerHeader: { backgroundColor: '#E0F7FA' }, // Light green/teal
+    winnerCell: { backgroundColor: '#E0F7FA' },
+    winnerTotal: { backgroundColor: '#B2EBF2' },
 
     footer: { padding: SPACING.l, backgroundColor: COLORS.card, borderTopWidth: 1, borderTopColor: COLORS.border, flexDirection: 'row', justifyContent: 'space-between' },
     endButton: { padding: SPACING.m, backgroundColor: COLORS.danger, borderRadius: 12, flex: 1, marginRight: SPACING.m, alignItems: 'center', ...SHADOWS.small },

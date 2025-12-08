@@ -1,5 +1,5 @@
-import { useNavigation, useRoute } from '@react-navigation/native';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import React, { useCallback, useState } from 'react';
 import {
     Alert,
     FlatList,
@@ -25,13 +25,37 @@ const GroupSelectionScreen = () => {
     const [isModalVisible, setModalVisible] = useState(false);
     const [newGroupName, setNewGroupName] = useState('');
 
-    useEffect(() => {
-        loadGroups();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            loadGroups();
+        }, [])
+    );
 
     const loadGroups = async () => {
         const loadedGroups = await StorageService.getGroups();
-        setGroups(loadedGroups);
+        const allPlayers = await StorageService.getPlayers();
+        const allPlayerIds = new Set(allPlayers.map(p => p.id));
+
+        let hasChanges = false;
+
+        // Auto-heal: Remove player IDs that no longer exist in the system
+        const sanitizedGroups = loadedGroups.map(group => {
+            const originalCount = group.playerIds.length;
+            const validPlayerIds = group.playerIds.filter(id => allPlayerIds.has(id));
+
+            if (originalCount !== validPlayerIds.length) {
+                hasChanges = true;
+                return { ...group, playerIds: validPlayerIds };
+            }
+            return group;
+        });
+
+        if (hasChanges) {
+            await StorageService.saveGroups(sanitizedGroups);
+            console.log('Sanitized groups: removed invalid player IDs');
+        }
+
+        setGroups(sanitizedGroups);
     };
 
     const handleCreateGroup = async () => {

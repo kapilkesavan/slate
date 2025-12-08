@@ -1,13 +1,8 @@
-
 import { useNavigation, useRoute } from '@react-navigation/native';
-import * as Sharing from 'expo-sharing'; // Added import
+import * as Sharing from 'expo-sharing';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Alert // Added Alert import
-    ,
-
-
-
+    Alert,
     ScrollView,
     StyleSheet,
     Text,
@@ -16,7 +11,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInUp, ZoomIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { captureRef } from 'react-native-view-shot'; // Added import
+import { captureRef } from 'react-native-view-shot';
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { GameSession, Settlement } from '../types';
 import { ScoringService } from '../utils/scoring';
@@ -26,8 +21,8 @@ import { StorageService } from '../utils/storage';
 const SettlementScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
-    const { sessionId } = route.params || {};
-    const viewRef = useRef<View>(null); // Added useRef
+    const { sessionId, isPreview } = route.params || {};
+    const viewRef = useRef<View>(null);
 
     const [session, setSession] = useState<GameSession | null>(null);
     const [settlements, setSettlements] = useState<Settlement[]>([]);
@@ -35,18 +30,46 @@ const SettlementScreen = () => {
     const [potSize, setPotSize] = useState(0);
 
     useEffect(() => {
-        loadData();
+        if (sessionId) {
+            loadSession();
+        }
     }, [sessionId]);
 
-    const loadData = async () => {
-        const history = await StorageService.getGameHistory();
-        const found = history.find(s => s.id === sessionId);
+    const loadSession = async () => {
+        // 1. Try to load from Settlement Snapshots first (to preserve Split Pot / Manual edits)
+        const snapshots = await StorageService.getSettlements();
+        const existingSnapshot = snapshots.find(s => s.sessionId === sessionId || s.id === sessionId);
 
-        if (found) {
-            setSession(found);
-            setPotSize(ScoringService.calculatePotSize(found));
+        if (existingSnapshot) {
+            // Found a saved snapshot! Use its data.
+            // We still need the session details (players, etc) for reference, so we try to load the session too.
+            let sessionData = await StorageService.getCurrentSession();
+            if (!sessionData || sessionData.id !== sessionId) {
+                const history = await StorageService.getGameHistory();
+                sessionData = history.find(s => s.id === sessionId) || null;
+            }
 
-            const calculatedSettlements = SettlementService.calculateSettlements(found);
+            if (sessionData) {
+                setSession(sessionData);
+                setPotSize(existingSnapshot.potSize);
+                setSettlements(existingSnapshot.settlements);
+                setTransfers(existingSnapshot.transfers);
+                return; // Done!
+            }
+        }
+
+        // 2. If no snapshot, calculate from Session Data (standard logic)
+        let sessionToUse = await StorageService.getCurrentSession();
+        if (!sessionToUse || sessionToUse.id !== sessionId) {
+            const history = await StorageService.getGameHistory();
+            sessionToUse = history.find(s => s.id === sessionId) || null;
+        }
+
+        if (sessionToUse) {
+            setSession(sessionToUse);
+            setPotSize(ScoringService.calculatePotSize(sessionToUse));
+
+            const calculatedSettlements = SettlementService.calculateSettlements(sessionToUse);
             setSettlements(calculatedSettlements);
 
             const calculatedTransfers = SettlementService.calculateTransfers(calculatedSettlements);
@@ -54,11 +77,65 @@ const SettlementScreen = () => {
         }
     };
 
+    useEffect(() => {
+        if (session && transfers.length > 0) {
+            saveSnapshotIfNeeded();
+        }
+    }, [session, transfers]);
+
+    const saveSnapshotIfNeeded = async () => {
+        if (!session) return;
+        if (isPreview) return;
+
+        const existingSettlements = await StorageService.getSettlements();
+        if (existingSettlements.some(s => s.sessionId === session.id || s.id === session.id)) {
+            return;
+        }
+
+        await saveSnapshot(session, transfers, settlements);
+    };
+
+    const saveSnapshot = async (currentSession: GameSession, currentTransfers: any[], currentSettlements: Settlement[]) => {
+        const snapshot: import('../types').SettlementSnapshot = {
+            id: currentSession.id,
+            sessionId: currentSession.id,
+            date: Date.now(),
+            gameTitle: currentSession.title,
+            gameType: currentSession.type,
+            potSize: currentSession.type === 'UNO' ? 0 : ScoringService.calculatePotSize(currentSession),
+            settlements: currentSettlements,
+            transfers: currentTransfers
+        };
+
+        await StorageService.saveSettlementSnapshot(snapshot);
+    };
+
+    const handleFinishGame = async () => {
+        if (!session) return;
+
+        // 1. Finalize Session
+        const endedSession = { ...session, isActive: false, endTime: Date.now() };
+        // Save to Game History
+        await StorageService.saveGameToHistory(endedSession);
+
+        // 2. Save Snapshot (Pass the CURRENT settlements which might include Split Pot)
+        await saveSnapshot(endedSession, transfers, settlements);
+
+        // 3. Clear Current Session (if it was the active one)
+        await StorageService.clearCurrentSession();
+
+        // 4. Navigate Home
+        navigation.reset({
+            index: 0,
+            routes: [{ name: 'Home' }],
+        });
+    };
+
     const getPlayerName = (id: string) => {
         return session?.players.find(p => p.id === id)?.name || 'Unknown';
     };
 
-    const handleShare = async () => { // Added handleShare function
+    const handleShare = async () => {
         try {
             if (viewRef.current) {
                 const uri = await captureRef(viewRef, {
@@ -95,28 +172,65 @@ const SettlementScreen = () => {
                 {
                     text: 'Split',
                     onPress: () => {
-                        const activePlayers = session.players.filter(p => !session.eliminatedPlayerIds.includes(p.id));
-                        if (activePlayers.length === 0) return;
-
                         const pot = ScoringService.calculatePotSize(session);
-                        const splitAmount = pot / activePlayers.length;
                         const buyIn = session.config.buyIn;
 
                         // Create new settlements based on split
+
+                        // 1. Get standard settlements first to know what non-active players would have received (e.g. 3rd place refund)
+                        const standardSettlements = SettlementService.calculateSettlements(session);
+
+                        // 2. Identify active players ids
+                        const activePlayerIds = session.players
+                            .filter(p => !session.eliminatedPlayerIds.includes(p.id))
+                            .map(p => p.id);
+
+                        if (activePlayerIds.length === 0) return;
+
+                        // 3. Calculate how much of the pot is already "claimed" by non-active players (e.g. 3rd place)
+                        let nonActivePayouts = 0;
+                        session.players.forEach(p => {
+                            if (!activePlayerIds.includes(p.id)) {
+                                const s = standardSettlements.find(set => set.playerId === p.id);
+                                if (s) {
+                                    const rebuys = session.rebuys[p.id] || 0;
+                                    const invested = buyIn + (rebuys * buyIn);
+                                    const payout = s.amount + invested; // Reconstruct payout from net amount
+                                    nonActivePayouts += payout;
+                                }
+                            }
+                        });
+
+                        // 4. Calculate Split Amount from REMAINING pot
+                        const remainingPot = Math.max(0, pot - nonActivePayouts);
+                        const splitAmount = remainingPot / activePlayerIds.length;
+
+                        // 5. Create new Settlements
                         const newSettlements: Settlement[] = session.players.map(player => {
-                            const isEliminated = session.eliminatedPlayerIds.includes(player.id);
+                            const isActive = activePlayerIds.includes(player.id);
                             const rebuys = session.rebuys[player.id] || 0;
                             const totalInvested = buyIn + (rebuys * buyIn);
 
-                            let payout = 0;
-                            if (!isEliminated) {
-                                payout = splitAmount;
+                            // Find standard settlement for rank reference and non-active amount reference
+                            const stdSettlement = standardSettlements.find(s => s.playerId === player.id);
+
+                            let finalAmount = 0;
+                            let finalRank = 99;
+
+                            if (isActive) {
+                                // Active players split the remaining pot and are Rank 1
+                                finalAmount = splitAmount - totalInvested;
+                                finalRank = 1;
+                            } else {
+                                // Non-active players keep their standard result and rank
+                                finalAmount = stdSettlement ? stdSettlement.amount : (0 - totalInvested);
+                                finalRank = stdSettlement ? stdSettlement.rank : 99;
                             }
 
                             return {
                                 playerId: player.id,
-                                rank: isEliminated ? 99 : 1, // Active players tied for 1st
-                                amount: payout - totalInvested
+                                rank: finalRank,
+                                amount: finalAmount
                             };
                         }).sort((a, b) => a.rank - b.rank);
 
@@ -132,7 +246,10 @@ const SettlementScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView style={{ backgroundColor: COLORS.background }}>
+            <ScrollView
+                style={{ backgroundColor: COLORS.background }}
+                contentContainerStyle={{ paddingBottom: 100 }}
+            >
                 <View ref={viewRef} style={styles.content} collapsable={false}>
                     <Animated.View entering={FadeInUp.duration(600)} style={styles.header}>
                         <Text style={styles.title}>Game Over</Text>
@@ -182,7 +299,7 @@ const SettlementScreen = () => {
                                             </View>
                                             <View style={styles.transferArrow}>
                                                 <Text style={styles.arrowText}>➔</Text>
-                                                <Text style={styles.transferAmount}>${t.amount.toFixed(2)}</Text>
+                                                <Text style={styles.transferAmount}>{`$${t.amount.toFixed(2)} `}</Text>
                                             </View>
                                             <View style={styles.transferSide}>
                                                 <Text style={styles.creditorName}>{getPlayerName(t.to)}</Text>
@@ -201,12 +318,27 @@ const SettlementScreen = () => {
                                 <Text style={styles.splitButtonText}>Split Pot / Shake Hands</Text>
                             </TouchableOpacity>
                         )}
+
                         <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
                             <Text style={styles.shareButtonText}>Share Result</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.homeButton} onPress={handleHome}>
-                            <Text style={styles.homeButtonText}>Back to Home</Text>
-                        </TouchableOpacity>
+
+                        {/* If in Preview Mode, show "Finish Game" and "Back to Scoreboard" */}
+                        {isPreview ? (
+                            <>
+                                <TouchableOpacity style={[styles.homeButton, { backgroundColor: COLORS.success, marginBottom: SPACING.s }]} onPress={handleFinishGame}>
+                                    <Text style={styles.homeButtonText}>Finish & Save</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.splitButton, { backgroundColor: COLORS.textSecondary }]} onPress={() => navigation.goBack()}>
+                                    <Text style={styles.splitButtonText}>Back to Scoreboard</Text>
+                                </TouchableOpacity>
+                            </>
+                        ) : (
+                            /* Normal View (History or after finish) */
+                            <TouchableOpacity style={styles.homeButton} onPress={handleHome}>
+                                <Text style={styles.homeButtonText}>Back to Home</Text>
+                            </TouchableOpacity>
+                        )}
                     </Animated.View>
                 </View>
             </ScrollView>
