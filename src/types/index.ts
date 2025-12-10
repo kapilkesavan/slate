@@ -63,3 +63,15 @@ export interface SettlementSnapshot {
     settlements: Settlement[]; // The calculated settlements
     transfers: { from: string; to: string; amount: number }[]; // Who owes whom
 }
+
+export interface PlayerStats {
+    playerId: string;
+    playerName: string;
+    firstPlace: number;
+    secondPlace: number;
+    thirdPlace: number;
+    hatTricks: number;
+    roundsWon: number;
+    totalPodiums: number;
+    totalMatches: number;
+}

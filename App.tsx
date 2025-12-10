@@ -10,6 +10,9 @@ import GroupSelectionScreen from './src/screens/GroupSelectionScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import PlayerSelectionScreen from './src/screens/PlayerSelectionScreen';
+import RankingGameTypeScreen from './src/screens/RankingGameTypeScreen';
+import RankingGroupSelectScreen from './src/screens/RankingGroupSelectScreen';
+import RankingLeaderboardScreen from './src/screens/RankingLeaderboardScreen';
 import ScoreboardScreen from './src/screens/ScoreboardScreen';
 import SettlementScreen from './src/screens/SettlementScreen';
 
@@ -55,6 +58,21 @@ export default function App() {
                             name="History"
                             component={HistoryScreen}
                             options={{ title: 'Game History', headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name="RankingGameType"
+                            component={RankingGameTypeScreen}
+                            options={{ title: 'Rankings', headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name="RankingGroupSelect"
+                            component={RankingGroupSelectScreen}
+                            options={{ title: 'Select Group', headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name="RankingLeaderboard"
+                            component={RankingLeaderboardScreen}
+                            options={{ title: 'Leaderboard', headerShown: false }}
                         />
                     </Stack.Navigator>
                 </NavigationContainer>

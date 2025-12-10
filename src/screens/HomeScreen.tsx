@@ -13,6 +13,9 @@ type RootStackParamList = {
     PlayerSelection: undefined;
     GameConfig: undefined;
     History: undefined;
+    RankingGameType: undefined;
+    RankingGroupSelect: { gameType: 'RUMMY' | 'UNO' };
+    RankingLeaderboard: { gameType: 'RUMMY' | 'UNO'; group: any };
 };
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -61,6 +64,16 @@ const HomeScreen = () => {
                             activeOpacity={0.8}
                         >
                             <Text style={styles.secondaryButtonText}>Play Others</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+
+                    <Animated.View entering={FadeInUp.delay(900).duration(1000).springify()}>
+                        <TouchableOpacity
+                            style={[styles.historyButton, { marginTop: SPACING.m, backgroundColor: COLORS.success }]}
+                            onPress={() => navigation.navigate('RankingGameType')}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.historyButtonText}>Rankings</Text>
                         </TouchableOpacity>
                     </Animated.View>
 
