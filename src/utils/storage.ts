@@ -126,11 +126,31 @@ export const StorageService = {
         // Remove existing snapshot for this session if it exists (to allow updates/re-settlements)
         const otherSettlements = settlements.filter((s: any) => s.id !== snapshot.id);
 
-        const updatedSettlements = [snapshot, ...otherSettlements];
+        // Ensure status is preserved if updating, or default to UNPAID for new ones
+        const existing = settlements.find((s: any) => s.id === snapshot.id);
+        const status = existing?.status || 'UNPAID';
+
+        const updatedSnapshot = { ...snapshot, status };
+
+        const updatedSettlements = [updatedSnapshot, ...otherSettlements];
         try {
             await AsyncStorage.setItem('score_tracker_settlements', JSON.stringify(updatedSettlements));
         } catch (e) {
             console.error('Error saving settlement', e);
+        }
+    },
+
+    updateSettlementStatus: async (id: string, status: 'PAID' | 'UNPAID'): Promise<void> => {
+        const settlements = await StorageService.getSettlements();
+        const index = settlements.findIndex((s: any) => s.id === id);
+        if (index >= 0) {
+            const updatedSettlements = [...settlements];
+            updatedSettlements[index] = { ...updatedSettlements[index], status };
+            try {
+                await AsyncStorage.setItem('score_tracker_settlements', JSON.stringify(updatedSettlements));
+            } catch (e) {
+                console.error('Error updating settlement status', e);
+            }
         }
     },
 

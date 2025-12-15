@@ -63,6 +63,7 @@ export interface SettlementSnapshot {
     potSize: number;
     settlements: Settlement[]; // The calculated settlements
     transfers: { from: string; to: string; amount: number }[]; // Who owes whom
+    status?: 'PAID' | 'UNPAID'; // Default UNPAID
 }
 
 export interface PlayerStats {

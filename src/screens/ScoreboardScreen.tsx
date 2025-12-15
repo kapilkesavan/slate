@@ -45,6 +45,58 @@ const ScoreboardScreen = () => {
     // Add Player State
     const [isAddPlayerModalVisible, setAddPlayerModalVisible] = useState(false);
     const [newPlayerName, setNewPlayerName] = useState('');
+    const [newPlayerAlias, setNewPlayerAlias] = useState('');
+    const [benchPlayers, setBenchPlayers] = useState<Player[]>([]);
+    const [showNewPlayerInput, setShowNewPlayerInput] = useState(false);
+
+    useEffect(() => {
+        if (isAddPlayerModalVisible && session?.groupId) {
+            loadBenchPlayers();
+        }
+    }, [isAddPlayerModalVisible, session]);
+
+    const loadBenchPlayers = async () => {
+        if (!session?.groupId) return;
+        const groups = await StorageService.getGroups();
+        const currentGroup = groups.find(g => g.id === session.groupId);
+        if (!currentGroup) return;
+
+        const allPlayers = await StorageService.getPlayers();
+        const sessionPlayerIds = session.players.map(p => p.id);
+
+        const bench = allPlayers.filter(p =>
+            currentGroup.playerIds.includes(p.id) && !sessionPlayerIds.includes(p.id)
+        );
+        setBenchPlayers(bench);
+    };
+
+    const joinGame = async (player: Player) => {
+        if (!session) return;
+
+        const currentTotals = ScoringService.calculateTotalScores(session);
+        const activeScores = session.players
+            .filter(p => !session.eliminatedPlayerIds.includes(p.id))
+            .map(p => currentTotals[p.id]);
+
+        const startScore = activeScores.length > 0 ? Math.max(...activeScores) : 0;
+
+        const updatedSession = { ...session };
+        updatedSession.players.push(player);
+
+        // Add adjustment round for new player
+        const adjustmentRound: GameRound = {
+            id: `join-${Date.now()}`,
+            scores: [{ playerId: player.id, score: startScore }],
+            timestamp: Date.now(),
+        };
+
+        updatedSession.rounds.push(adjustmentRound);
+
+        await saveSession(updatedSession);
+        setAddPlayerModalVisible(false);
+        setNewPlayerName('');
+        setShowNewPlayerInput(false);
+    };
 
     const handleShare = async () => {
         try {
@@ -63,48 +115,29 @@ const ScoreboardScreen = () => {
         }
     };
 
-    const handleAddPlayer = async () => {
+    const handleCreateNewPlayer = async () => {
         if (!session || !newPlayerName.trim()) return;
 
-        const currentTotals = ScoringService.calculateTotalScores(session);
-        const activeScores = session.players
-            .filter(p => !session.eliminatedPlayerIds.includes(p.id))
-            .map(p => currentTotals[p.id]);
+        // Confirmation Logic kept simplistic or could ask for start score confirmation? 
+        // Spec says "Entry Score Logic" is "Default = Current Max Score".
+        // Let's just do it.
 
-        const startScore = activeScores.length > 0 ? Math.max(...activeScores) : 0;
+        const newPlayer: Player = {
+            id: Date.now().toString(),
+            name: newPlayerName.trim(),
+            alias: newPlayerAlias.trim() || undefined
+        };
 
-        Alert.alert(
-            'Confirm Add Player',
-            `Add "${newPlayerName}" with starting score: ${startScore}?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Add',
-                    onPress: async () => {
-                        const newPlayer: Player = {
-                            id: Date.now().toString(),
-                            name: newPlayerName.trim(),
-                        };
+        // 1. Create in Master List
+        await StorageService.addPlayer(newPlayer);
 
-                        const updatedSession = { ...session };
-                        updatedSession.players.push(newPlayer);
+        // 2. Auto-Link to Current Group
+        if (session.groupId) {
+            await StorageService.addPlayerToGroup(session.groupId, newPlayer.id);
+        }
 
-                        // Add adjustment round for new player
-                        const adjustmentRound: GameRound = {
-                            id: `join-${Date.now()}`,
-                            scores: [{ playerId: newPlayer.id, score: startScore }],
-                            timestamp: Date.now(),
-                        };
-
-                        updatedSession.rounds.push(adjustmentRound);
-
-                        await saveSession(updatedSession);
-                        setAddPlayerModalVisible(false);
-                        setNewPlayerName('');
-                    }
-                }
-            ]
-        );
+        // 3. Join Game
+        await joinGame(newPlayer);
     };
 
     useEffect(() => {
@@ -404,6 +437,10 @@ const ScoreboardScreen = () => {
                             style={{ flexGrow: 0 }}
                         >
                             <View ref={viewRef} collapsable={false} style={{ backgroundColor: COLORS.background }}>
+                                {/* Shareable Header - Only visible in capture? No, always visible but good for context */}
+                                <View style={{ padding: SPACING.s, backgroundColor: COLORS.card, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                                    <Text style={{ fontSize: FONT_SIZE.m, fontWeight: 'bold', color: COLORS.text }}>{session.title}</Text>
+                                </View>
                                 {/* Header Row */}
                                 <View style={styles.tableRow}>
                                     <View style={[styles.cell, styles.roundColumn, styles.headerBackground]}>
@@ -699,22 +736,73 @@ const ScoreboardScreen = () => {
             <Modal visible={isAddPlayerModalVisible} animationType="fade" transparent={true}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.smallModalContainer}>
-                        <Text style={styles.modalTitle}>Add New Player</Text>
-                        <TextInput
-                            style={styles.largeInput}
-                            placeholder="Player Name"
-                            value={newPlayerName}
-                            onChangeText={setNewPlayerName}
-                            autoFocus={true}
-                        />
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setAddPlayerModalVisible(false)}>
-                                <Text style={styles.modalButtonText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleAddPlayer}>
-                                <Text style={styles.modalButtonText}>Add</Text>
-                            </TouchableOpacity>
-                        </View>
+                        <Text style={styles.modalTitle}>Add Player</Text>
+
+                        {!showNewPlayerInput ? (
+                            <>
+                                <ScrollView style={{ maxHeight: 300, width: '100%', marginBottom: SPACING.m }}>
+                                    <TouchableOpacity
+                                        style={[styles.benchPlayerButton, { borderColor: COLORS.secondary, borderStyle: 'dashed' }]}
+                                        onPress={() => setShowNewPlayerInput(true)}
+                                    >
+                                        <Text style={[styles.benchPlayerText, { color: COLORS.secondary }]}>+ Create New Player</Text>
+                                        <Text style={{ fontSize: 20, color: COLORS.secondary }}>→</Text>
+                                    </TouchableOpacity>
+
+                                    {benchPlayers.length > 0 ? (
+                                        benchPlayers.map(player => (
+                                            <TouchableOpacity
+                                                key={player.id}
+                                                style={styles.benchPlayerButton}
+                                                onPress={() => joinGame(player)}
+                                            >
+                                                <Text style={styles.benchPlayerText}>{player.name}</Text>
+                                                <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>Join now</Text>
+                                            </TouchableOpacity>
+                                        ))
+                                    ) : (
+                                        <Text style={{ textAlign: 'center', color: COLORS.textSecondary, fontStyle: 'italic', marginVertical: 10 }}>
+                                            No bench players available.
+                                        </Text>
+                                    )}
+                                </ScrollView>
+
+                                <TouchableOpacity
+                                    style={[styles.cancelButton, { width: '100%', padding: SPACING.m, borderRadius: 8, alignItems: 'center' }]}
+                                    onPress={() => setAddPlayerModalVisible(false)}
+                                >
+                                    <Text style={styles.modalButtonText}>Back</Text>
+                                </TouchableOpacity>
+                            </>
+                        ) : (
+                            <>
+                                <TextInput
+                                    style={styles.largeInput}
+                                    placeholder="Player Name"
+                                    value={newPlayerName}
+                                    onChangeText={setNewPlayerName}
+                                    autoFocus={true}
+                                />
+                                <TextInput
+                                    style={[styles.largeInput, { marginTop: SPACING.s }]}
+                                    placeholder="Alias (Optional)"
+                                    value={newPlayerAlias}
+                                    onChangeText={setNewPlayerAlias}
+                                />
+                                <View style={styles.modalButtons}>
+                                    <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => {
+                                        setShowNewPlayerInput(false);
+                                        setNewPlayerName('');
+                                        setNewPlayerAlias('');
+                                    }}>
+                                        <Text style={styles.modalButtonText}>Back</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleCreateNewPlayer}>
+                                        <Text style={styles.modalButtonText}>Add</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </>
+                        )}
                     </View>
                 </View>
             </Modal>
@@ -794,6 +882,34 @@ const styles = StyleSheet.create({
     addRoundButtonText: { color: COLORS.white, fontWeight: 'bold', fontSize: FONT_SIZE.l },
 
     modalContainer: { flex: 1, padding: SPACING.l, backgroundColor: COLORS.background },
+
+    benchPlayerButton: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: SPACING.m,
+        backgroundColor: COLORS.card,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 12,
+        marginBottom: SPACING.s
+    },
+    benchPlayerText: {
+        fontSize: FONT_SIZE.m,
+        fontWeight: 'bold',
+        color: COLORS.text
+    },
+    secondaryButton: {
+        backgroundColor: COLORS.card,
+        borderWidth: 1,
+        borderColor: COLORS.secondary,
+    },
+    secondaryButtonText: {
+        color: COLORS.secondary,
+        fontWeight: 'bold',
+        fontSize: FONT_SIZE.m,
+        textAlign: 'center'
+    },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.l },
     modalTitle: { fontSize: FONT_SIZE.xl, fontWeight: 'bold', color: COLORS.text },
     closeText: { fontSize: FONT_SIZE.m, color: COLORS.primary, fontWeight: '600' },

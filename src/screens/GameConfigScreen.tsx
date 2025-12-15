@@ -17,7 +17,7 @@ import { StorageService } from '../utils/storage';
 const GameConfigScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
-    const { players, gameType = 'RUMMY', groupId } = route.params || { players: [] };
+    const { players, gameType = 'RUMMY', groupId, groupName } = route.params || { players: [] };
 
     const [config, setConfig] = useState<GameConfig>({
         buyIn: gameType === 'UNO' ? 0 : 5,
@@ -37,7 +37,7 @@ const GameConfigScreen = () => {
         // Create new Game Session
         const newSession: GameSession = {
             id: Date.now().toString(),
-            title: `${gameType === 'UNO' ? 'UNO' : 'Rummy'}-${new Date().toLocaleString()}`,
+            title: `${gameType === 'UNO' ? 'UNO' : 'Rummy'}-${groupName || 'Custom'}-${new Date().toLocaleString()}`,
             players: players,
             config: config,
             rounds: [],

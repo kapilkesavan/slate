@@ -125,7 +125,7 @@ const PlayerSelectionScreen = () => {
             Alert.alert('Error', 'Please select at least 2 players');
             return;
         }
-        navigation.navigate('GameConfig', { players: selectedPlayers, gameType, groupId });
+        navigation.navigate('GameConfig', { players: selectedPlayers, gameType, groupId, groupName });
     };
 
     const filteredPlayers = groupId

@@ -25,12 +25,19 @@ const HistoryScreen = () => {
         const historyData = await StorageService.getGameHistory();
         setHistory(historyData.sort((a, b) => b.startTime - a.startTime));
 
-        // Load settlements if we had a dedicated storage method, but for now we might rely on the snapshot
-        // logic we implemented (or plan to implement) in StorageService.
-        // Wait, I added getSettlements() to StorageService in previous step.
         const settlementsData = await StorageService.getSettlements();
         // Sort by date desc
         setSettlements(settlementsData.sort((a: any, b: any) => b.date - a.date));
+    };
+
+    const toggleSettlementStatus = async (item: SettlementSnapshot) => {
+        const newStatus = item.status === 'PAID' ? 'UNPAID' : 'PAID';
+        await StorageService.updateSettlementStatus(item.id, newStatus);
+
+        // Update local state immediately
+        setSettlements(prev => prev.map(s =>
+            s.id === item.id ? { ...s, status: newStatus } : s
+        ));
     };
 
     const deleteGame = async (sessionId: string) => {
@@ -84,13 +91,15 @@ const HistoryScreen = () => {
                         onPress={() => navigation.navigate('Scoreboard', { sessionId: item.id, readOnly: !item.isActive })}
                     >
                         <View style={styles.cardHeader}>
-                            <View>
-                                <Text style={styles.gameTitle}>{item.title}</Text>
+                            <View style={{ flex: 1, marginRight: SPACING.s }}>
+                                <Text style={styles.gameTitle} numberOfLines={1} ellipsizeMode="tail">{item.title}</Text>
                                 <Text style={styles.gameType}>{item.type === 'UNO' ? 'UNO' : 'Rummy'}</Text>
                             </View>
-                            <Text style={[styles.statusBadge, item.isActive ? styles.activeStatus : styles.finishedStatus]}>
-                                {item.isActive ? 'Active' : 'Finished'}
-                            </Text>
+                            <View style={{ flexShrink: 0 }}>
+                                <Text style={[styles.statusBadge, item.isActive ? styles.activeStatus : styles.finishedStatus]}>
+                                    {item.isActive ? 'Active' : 'Finished'}
+                                </Text>
+                            </View>
                         </View>
 
                         <Text style={styles.dateText}>{formatDate(item.startTime)}</Text>
@@ -113,11 +122,21 @@ const HistoryScreen = () => {
                     onPress={() => navigation.navigate('Settlement', { sessionId: item.id })}
                 >
                     <View style={styles.cardHeader}>
-                        <View>
-                            <Text style={styles.gameTitle}>{item.gameTitle}</Text>
+                        <View style={{ flex: 1, marginRight: SPACING.s }}>
+                            <Text style={styles.gameTitle} numberOfLines={1} ellipsizeMode="tail">{item.gameTitle}</Text>
                             <Text style={styles.gameType}>Settled</Text>
                         </View>
-                        <Text style={[styles.statusBadge, styles.finishedStatus]}>Paid</Text>
+                        <TouchableOpacity
+                            onPress={() => toggleSettlementStatus(item)}
+                            style={{ flexShrink: 0 }}
+                        >
+                            <Text style={[
+                                styles.statusBadge,
+                                item.status === 'PAID' ? styles.paidStatus : styles.unpaidStatus
+                            ]}>
+                                {item.status === 'PAID' ? 'Paid' : 'Unpaid'}
+                            </Text>
+                        </TouchableOpacity>
                     </View>
                     <Text style={styles.dateText}>{formatDate(item.date)}</Text>
 
@@ -232,6 +251,8 @@ const styles = StyleSheet.create({
     statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, overflow: 'hidden', fontSize: FONT_SIZE.xs, fontWeight: 'bold' },
     activeStatus: { backgroundColor: '#E0F2F1', color: COLORS.secondary },
     finishedStatus: { backgroundColor: '#F5F5F5', color: COLORS.textSecondary },
+    paidStatus: { backgroundColor: '#E6FFE6', color: COLORS.success, borderWidth: 1, borderColor: COLORS.success },
+    unpaidStatus: { backgroundColor: '#FFF0F0', color: COLORS.danger, borderWidth: 1, borderColor: COLORS.danger },
 
     cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.s, marginTop: SPACING.s },
     playersText: { fontSize: FONT_SIZE.s, color: COLORS.textSecondary },
