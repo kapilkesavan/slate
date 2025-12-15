@@ -17,7 +17,7 @@ import { StorageService } from '../utils/storage';
 const GameConfigScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
-    const { players, gameType = 'RUMMY' } = route.params || { players: [] };
+    const { players, gameType = 'RUMMY', groupId } = route.params || { players: [] };
 
     const [config, setConfig] = useState<GameConfig>({
         buyIn: gameType === 'UNO' ? 0 : 5,
@@ -46,6 +46,7 @@ const GameConfigScreen = () => {
             isActive: true,
             startTime: Date.now(),
             type: gameType,
+            groupId: groupId,
         };
 
         // Save to history and set as current session

@@ -30,7 +30,18 @@ export const StatsService = {
         });
 
         // Filter sessions by Type
-        const filteredSessions = history.filter(s => s.type === gameType);
+        // FIX: If targetGroup is provided, we MUST only include sessions that created specifically for this group.
+        // If targetGroup is NOT provided (Global), currently we show all sessions of that type.
+        const filteredSessions = history.filter(s => {
+            if (s.type !== gameType) return false;
+
+            // Critical Data Scoping Fix:
+            if (targetGroup) {
+                return s.groupId === targetGroup.id;
+            }
+
+            return true;
+        });
 
         filteredSessions.forEach(session => {
             // Check if this session involves any of our relevant players

@@ -44,6 +44,7 @@ export interface GameSession {
     startTime: number;
     endTime?: number;
     type: GameType;
+    groupId?: string;
 }
 
 export interface Settlement {
