@@ -22,6 +22,7 @@ export interface GameConfig {
 export interface RoundScore {
     playerId: string;
     score: number;
+    isHandRummy?: boolean;
 }
 
 export interface GameRound {
@@ -74,6 +75,7 @@ export interface PlayerStats {
     thirdPlace: number;
     hatTricks: number;
     roundsWon: number;
+    handRummyCount: number;
     totalPodiums: number;
     totalMatches: number;
 }

@@ -17,6 +17,7 @@ import { captureRef } from 'react-native-view-shot';
 import { COLORS, FONT_SIZE, SHADOWS, SPACING } from '../constants/theme';
 import { GameRound, GameSession, Player, RoundScore } from '../types';
 import { ScoringService } from '../utils/scoring';
+import { SettlementService } from '../utils/settlement';
 import { StorageService } from '../utils/storage';
 
 const ScoreboardScreen = () => {
@@ -33,6 +34,7 @@ const ScoreboardScreen = () => {
     // Modal State
     const [isScoreModalVisible, setScoreModalVisible] = useState(false);
     const [currentRoundScores, setCurrentRoundScores] = useState<Record<string, string>>({});
+    const [handRummyState, setHandRummyState] = useState<Record<string, boolean>>({});
 
     // Rebuy Modal State
     const [isRebuyModalVisible, setRebuyModalVisible] = useState(false);
@@ -185,7 +187,8 @@ const ScoreboardScreen = () => {
                 if (isNaN(score)) {
                     isValid = false;
                 } else {
-                    scores.push({ playerId: player.id, score });
+                    const isHandRummy = handRummyState[player.id] || false;
+                    scores.push({ playerId: player.id, score, isHandRummy });
                     if (score === 0) zeroCount++;
                     if (score > session.config.maxPenalty) maxPenaltyExceeded = true;
                 }
@@ -249,7 +252,9 @@ const ScoreboardScreen = () => {
 
         await saveSession(updatedSession);
         setScoreModalVisible(false);
+        setScoreModalVisible(false);
         setCurrentRoundScores({});
+        setHandRummyState({});
     };
 
     const initiateRebuy = (playerId: string) => {
@@ -362,6 +367,33 @@ const ScoreboardScreen = () => {
         await StorageService.saveCurrentSession(updatedSession);
         setSession(updatedSession);
         updateStats(updatedSession);
+
+        // Auto-Sync Settlement if game is finished
+        if (!updatedSession.isActive) {
+            const settlements = SettlementService.calculateSettlements(updatedSession);
+            const transfers = SettlementService.calculateTransfers(settlements);
+            const pot = ScoringService.calculatePotSize(updatedSession);
+
+            // Construct Snapshot
+            // We use 'any' for snapshot structure matching StorageService expectation if typing is loose, 
+            // but ideally we utilize the defined type.
+            const snapshot = {
+                id: updatedSession.id,
+                sessionId: updatedSession.id,
+                date: updatedSession.startTime, // Use game start time to match history sorting? Or end time?
+                // HistoryScreen sorts settlements by 'date'. 
+                // If we use 'startTime', it stays with the game.
+                gameTitle: updatedSession.title,
+                gameType: updatedSession.type,
+                potSize: pot,
+                players: updatedSession.players,
+                transfers: transfers,
+                settlements: settlements,
+                // STATUS is handled by StorageService (preserves existing or defaults to UNPAID)
+            };
+
+            await StorageService.saveSettlementSnapshot(snapshot);
+        }
     };
 
     const handleEndGame = () => {
@@ -593,6 +625,17 @@ const ScoreboardScreen = () => {
                                                     >
                                                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                                             <Text style={styles.cellText}>{score}</Text>
+                                                            {/* Hand Rummy Icon */}
+                                                            {row.type === 'round' && score === 0 && (
+                                                                (() => {
+                                                                    const sessionRoundIndex = session.rounds.findIndex(r => r.id === row.id);
+                                                                    const roundScore = session.rounds[sessionRoundIndex]?.scores.find(s => s.playerId === player.id);
+                                                                    if (roundScore?.isHandRummy) {
+                                                                        return <Text style={{ marginLeft: 4, fontSize: 12 }}>✋</Text>;
+                                                                    }
+                                                                    return null;
+                                                                })()
+                                                            )}
                                                             {showFire && <Text style={{ marginLeft: 4, fontSize: 12 }}>🔥</Text>}
                                                         </View>
                                                     </TouchableOpacity>
@@ -621,6 +664,44 @@ const ScoreboardScreen = () => {
                                                     isWinner && styles.winnerTotal
                                                 ]}>
                                                 <Text style={[styles.totalText, isEliminated && { color: COLORS.danger }]}>{totals[player.id] || 0}</Text>
+
+                                                {/* Safe Margin Indicator */}
+                                                {!isEliminated && !isWinner && session.isActive && (
+                                                    (() => {
+                                                        const currentScore = totals[player.id] || 0;
+                                                        const safeMargin = session.config.eliminationThreshold - currentScore;
+                                                        const dropBuffer = session.config.scootPenalty; // Usually 25 or 20
+
+                                                        let badgeColor = COLORS.success; // Green (Safe)
+                                                        let labelText = `Safe: ${safeMargin}`;
+
+                                                        if (safeMargin <= 2) {
+                                                            badgeColor = COLORS.danger; // Red (Compel-MustWin)
+                                                            labelText = `Compel-MustWin: ${safeMargin}`;
+                                                        } else if (safeMargin < 25) {
+                                                            badgeColor = COLORS.warning; // Orange (Compel)
+                                                            labelText = `Compel: ${safeMargin}`;
+                                                        }
+
+                                                        return (
+                                                            <View style={{
+                                                                backgroundColor: badgeColor,
+                                                                paddingHorizontal: 6,
+                                                                paddingVertical: 2,
+                                                                borderRadius: 8,
+                                                                marginTop: 4
+                                                            }}>
+                                                                <Text style={{
+                                                                    color: COLORS.white,
+                                                                    fontSize: 10,
+                                                                    fontWeight: 'bold'
+                                                                }}>
+                                                                    {labelText}
+                                                                </Text>
+                                                            </View>
+                                                        );
+                                                    })()
+                                                )}
                                             </View>
                                         )
                                     })}
@@ -694,6 +775,15 @@ const ScoreboardScreen = () => {
                                                 </TouchableOpacity>
                                             ))}
                                         </View>
+                                        {(currentRoundScores[player.id] === '0') && (
+                                            <TouchableOpacity
+                                                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}
+                                                onPress={() => setHandRummyState(prev => ({ ...prev, [player.id]: !prev[player.id] }))}
+                                            >
+                                                <Text style={{ fontSize: 16, marginRight: 8 }}>{handRummyState[player.id] ? '☑' : '☐'}</Text>
+                                                <Text style={{ fontSize: 12, color: COLORS.text }}>Hand Rummy?</Text>
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
                                 </View>
                             );

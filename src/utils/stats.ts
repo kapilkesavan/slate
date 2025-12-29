@@ -6,7 +6,8 @@ export const StatsService = {
         history: GameSession[],
         players: Player[],
         gameType: GameType,
-        targetGroup?: PlayerGroup
+        targetGroup?: PlayerGroup,
+        settlements?: import('../types').SettlementSnapshot[]
     ): PlayerStats[] => {
         const statsMap = new Map<string, PlayerStats>();
 
@@ -24,6 +25,7 @@ export const StatsService = {
                 thirdPlace: 0,
                 hatTricks: 0,
                 roundsWon: 0,
+                handRummyCount: 0,
                 totalPodiums: 0,
                 totalMatches: 0
             });
@@ -51,25 +53,73 @@ export const StatsService = {
             // So we process the session, and only update stats for players who exist in statsMap.
 
             // 1. Get Rankings for this session
-            const rankings = ScoringService.getRankings(session);
-            const numWinners = session.config.numWinners;
+            let startRank = 1;
 
-            rankings.forEach(r => {
-                const pStats = statsMap.get(r.playerId);
-                if (!pStats) return; // Player not in our interest list
+            // Check if there is a Settlement Snapshot for this session
+            const snapshot = settlements?.find(s => s.sessionId === session.id || s.id === session.id);
 
-                // Increment Total Matches
-                pStats.totalMatches++;
+            if (snapshot && snapshot.settlements && snapshot.settlements.length > 0) {
+                // USE SNAPSHOT RANKINGS (Handles Split Pots)
+                snapshot.settlements.forEach(s => {
+                    const pStats = statsMap.get(s.playerId);
+                    if (!pStats) return;
 
-                // Update placements
-                if (r.rank === 1) {
-                    pStats.firstPlace++;
-                } else if (r.rank === 2 && numWinners >= 2) {
-                    pStats.secondPlace++;
-                } else if (r.rank === 3 && numWinners >= 3) {
-                    pStats.thirdPlace++;
-                }
-            });
+                    // Increment Total Matches (Only if they actually played? Snapshot should include all players usually)
+                    // If we are iterating snapshot settlements, we are iterating players.
+                    // IMPORTANT: We need to make sure we don't double count 'Total Matches' if we mixed logic.
+                    // But we are inside `history.forEach`, so 'Total Matches' should be incremented ONCE per session per player.
+                    // Current logic:
+                    // forEach(ranking) -> update stats.
+                    // In the original code, 'rankings' included all players (active + eliminated).
+                    // Snapshot 'settlements' also includes all players (active + eliminated).
+                });
+
+                // Let's iterate the SNAPSHOT SETTLEMENTS to update placements
+                snapshot.settlements.forEach(s => {
+                    const pStats = statsMap.get(s.playerId);
+                    if (!pStats) return;
+
+                    // Update placements based on Snapshot Rank
+                    if (s.rank === 1) {
+                        pStats.firstPlace++;
+                    } else if (s.rank === 2) {
+                        pStats.secondPlace++;
+                    } else if (s.rank === 3) {
+                        pStats.thirdPlace++;
+                    }
+                });
+
+                // We still need to increment 'Total Matches'.
+                // Ideally we iterate 'session.players' and increment 'totalMatches' for everyone in the session?
+                // The original code did `rankings.forEach` which is essentially `session.players`.
+                // So let's do:
+                session.players.forEach(p => {
+                    const pStats = statsMap.get(p.id);
+                    if (pStats) pStats.totalMatches++;
+                });
+
+            } else {
+                // FALLBACK TO CALCULATED RANKINGS (Standard)
+                const rankings = ScoringService.getRankings(session);
+                const numWinners = session.config.numWinners;
+
+                rankings.forEach(r => {
+                    const pStats = statsMap.get(r.playerId);
+                    if (!pStats) return; // Player not in our interest list
+
+                    // Increment Total Matches
+                    pStats.totalMatches++;
+
+                    // Update placements
+                    if (r.rank === 1) {
+                        pStats.firstPlace++;
+                    } else if (r.rank === 2 && numWinners >= 2) {
+                        pStats.secondPlace++;
+                    } else if (r.rank === 3 && numWinners >= 3) {
+                        pStats.thirdPlace++;
+                    }
+                });
+            }
 
             // 2. Hat-Tricks & Rounds Won
             // We need to look at rounds for each player
@@ -82,12 +132,21 @@ export const StatsService = {
                     return scoreEntry ? scoreEntry.score : null;
                 }).filter((s): s is number => s !== null);
 
-                // Rounds Won (Score == 0)
+                // Rounds Won (Score == 0) & Hand Rummy
                 let wins = 0;
-                playerScores.forEach(s => {
-                    if (s === 0) wins++;
+                let handRummy = 0;
+
+                // Need to iterate ORIGINAL round objects to access isHandRummy flag not just score list
+                session.rounds.forEach(r => {
+                    const s = r.scores.find(sc => sc.playerId === p.id);
+                    if (s && s.score === 0) {
+                        wins++;
+                        if (s.isHandRummy) handRummy++;
+                    }
                 });
+
                 pStats.roundsWon += wins;
+                pStats.handRummyCount += handRummy;
 
                 // Hat-tricks (3 consecutive wins)
                 // Logic: greedy non-overlapping.

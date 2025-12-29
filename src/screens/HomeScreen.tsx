@@ -16,6 +16,7 @@ type RootStackParamList = {
     RankingGameType: undefined;
     RankingGroupSelect: { gameType: 'RUMMY' | 'UNO' };
     RankingLeaderboard: { gameType: 'RUMMY' | 'UNO'; group: any };
+    About: undefined;
 };
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -43,7 +44,7 @@ const HomeScreen = () => {
                             onPress={() => navigation.navigate('GroupSelection', { gameType: 'RUMMY' })}
                             activeOpacity={0.8}
                         >
-                            <Text style={styles.buttonText}>Play Rummy</Text>
+                            <Text style={styles.buttonText}>Track Rummy</Text>
                         </TouchableOpacity>
                     </Animated.View>
 
@@ -53,7 +54,7 @@ const HomeScreen = () => {
                             onPress={() => navigation.navigate('GroupSelection', { gameType: 'UNO' })}
                             activeOpacity={0.8}
                         >
-                            <Text style={styles.secondaryButtonText}>Play UNO</Text>
+                            <Text style={styles.secondaryButtonText}>Track UNO</Text>
                         </TouchableOpacity>
                     </Animated.View>
 
@@ -63,7 +64,7 @@ const HomeScreen = () => {
                             onPress={() => alert('Coming soon!')}
                             activeOpacity={0.8}
                         >
-                            <Text style={styles.secondaryButtonText}>Play Others</Text>
+                            <Text style={styles.secondaryButtonText}>Track Others</Text>
                         </TouchableOpacity>
                     </Animated.View>
 
@@ -84,6 +85,16 @@ const HomeScreen = () => {
                             activeOpacity={0.8}
                         >
                             <Text style={styles.historyButtonText}>History</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+
+                    <Animated.View entering={FadeInUp.delay(1000).duration(1000).springify()}>
+                        <TouchableOpacity
+                            style={[styles.historyButton, { backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border }]}
+                            onPress={() => navigation.navigate('About')}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={[styles.historyButtonText, { color: COLORS.text }]}>About</Text>
                         </TouchableOpacity>
                     </Animated.View>
                 </View>

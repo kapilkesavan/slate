@@ -5,6 +5,7 @@ import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import AboutScreen from './src/screens/AboutScreen';
 import GameConfigScreen from './src/screens/GameConfigScreen';
 import GroupSelectionScreen from './src/screens/GroupSelectionScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
@@ -73,6 +74,11 @@ export default function App() {
                             name="RankingLeaderboard"
                             component={RankingLeaderboardScreen}
                             options={{ title: 'Leaderboard', headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name="About"
+                            component={AboutScreen}
+                            options={{ title: 'About', headerShown: false }}
                         />
                     </Stack.Navigator>
                 </NavigationContainer>

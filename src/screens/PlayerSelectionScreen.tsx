@@ -201,10 +201,13 @@ const PlayerSelectionScreen = () => {
 
             {/* Modal for Selecting/Creating Players */}
             <Modal visible={isModalVisible} animationType="slide" presentationStyle="pageSheet">
-                <View style={styles.modalContainer}>
+                <SafeAreaView style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>{editingPlayer ? 'Edit Player' : 'Select Players'}</Text>
-                        <TouchableOpacity onPress={() => setModalVisible(false)}>
+                        <TouchableOpacity
+                            onPress={() => setModalVisible(false)}
+                            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                        >
                             <Text style={styles.closeText}>Done</Text>
                         </TouchableOpacity>
                     </View>
@@ -281,7 +284,7 @@ const PlayerSelectionScreen = () => {
                             ) : null
                         }
                     />
-                </View>
+                </SafeAreaView>
             </Modal>
         </SafeAreaView>
     );

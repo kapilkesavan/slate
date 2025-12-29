@@ -55,23 +55,30 @@ export const ScoringService = {
             .map(p => ({ playerId: p.id, totalScore: totals[p.id], rank: 0 }))
             .sort((a, b) => a.totalScore - b.totalScore);
 
-        // Helper to count rounds played
-        const getRoundsPlayed = (playerId: string) => {
-            return session.rounds.filter(r => r.scores.some(s => s.playerId === playerId)).length;
+        // Helper to find the index of the last round a player participated in (Time of Death or Drop)
+        const getLastRoundIndex = (playerId: string) => {
+            for (let i = session.rounds.length - 1; i >= 0; i--) {
+                const round = session.rounds[i];
+                if (round.scores.some(s => s.playerId === playerId)) {
+                    return i;
+                }
+            }
+            return -1; // Should not happen for active/eliminated players who have played
         };
 
-        // Eliminated players sorted by Rounds Played (Desc) -> Then Score (Asc)
+        // Eliminated players sorted by Last Round Index (Desc) -> Then Score (Asc)
+        // Last Round Index indicates "how long they survived into the game".
         const rankedEliminated = eliminatedPlayers
             .map(p => ({
                 playerId: p.id,
                 totalScore: totals[p.id],
                 rank: 0,
-                roundsPlayed: getRoundsPlayed(p.id)
+                lastRoundIndex: getLastRoundIndex(p.id)
             }))
             .sort((a, b) => {
-                // Primary: Rounds Played (Descending) - More rounds means survived longer
-                if (b.roundsPlayed !== a.roundsPlayed) {
-                    return b.roundsPlayed - a.roundsPlayed;
+                // Primary: Last Round Index (Descending) - Later index means survived longer
+                if (b.lastRoundIndex !== a.lastRoundIndex) {
+                    return b.lastRoundIndex - a.lastRoundIndex;
                 }
                 // Secondary: Total Score (Ascending) - Lower score is better among those eliminated in same round
                 return a.totalScore - b.totalScore;
@@ -85,8 +92,8 @@ export const ScoringService = {
         });
 
         rankedEliminated.forEach(p => {
-            // Remove roundsPlayed from final object to match return type
-            const { roundsPlayed, ...rest } = p;
+            // Remove lastRoundIndex from final object to match return type
+            const { lastRoundIndex, ...rest } = p;
             finalRankings.push({ ...rest, rank: rank++ });
         });
 

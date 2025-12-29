@@ -95,10 +95,18 @@ const HistoryScreen = () => {
                                 <Text style={styles.gameTitle} numberOfLines={1} ellipsizeMode="tail">{item.title}</Text>
                                 <Text style={styles.gameType}>{item.type === 'UNO' ? 'UNO' : 'Rummy'}</Text>
                             </View>
-                            <View style={{ flexShrink: 0 }}>
-                                <Text style={[styles.statusBadge, item.isActive ? styles.activeStatus : styles.finishedStatus]}>
-                                    {item.isActive ? 'Active' : 'Finished'}
-                                </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <TouchableOpacity
+                                    onPress={() => navigation.navigate('Scoreboard', { sessionId: item.id, readOnly: false })}
+                                    style={{ padding: 4 }}
+                                >
+                                    <Text style={{ fontSize: 18 }}>✏️</Text>
+                                </TouchableOpacity>
+                                <View style={{ flexShrink: 0 }}>
+                                    <Text style={[styles.statusBadge, item.isActive ? styles.activeStatus : styles.finishedStatus]}>
+                                        {item.isActive ? 'Active' : 'Finished'}
+                                    </Text>
+                                </View>
                             </View>
                         </View>
 

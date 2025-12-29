@@ -17,8 +17,9 @@ export default function RankingLeaderboardScreen({ route, navigation }: any) {
     const calculateStats = async () => {
         const history = await StorageService.getGameHistory();
         const players = await StorageService.getPlayers();
+        const settlements = await StorageService.getSettlements();
 
-        const calculatedStats = StatsService.calculatePlayerStats(history, players, gameType, group);
+        const calculatedStats = StatsService.calculatePlayerStats(history, players, gameType, group, settlements);
         setStats(calculatedStats);
     };
 
@@ -29,6 +30,7 @@ export default function RankingLeaderboardScreen({ route, navigation }: any) {
             <Text style={[styles.cell, styles.statCell, styles.headerText]}>1st</Text>
             <Text style={[styles.cell, styles.statCell, styles.headerText]}>2nd</Text>
             <Text style={[styles.cell, styles.statCell, styles.headerText]}>3rd</Text>
+            <Text style={[styles.cell, styles.statCell, styles.headerText]}>H.R</Text>
             <Text style={[styles.cell, styles.statCell, styles.headerText]}>H.T</Text>
             <Text style={[styles.cell, styles.statCell, styles.headerText]}>R.W</Text>
             <Text style={[styles.cell, styles.statCell, styles.headerText]}>T.M</Text>
@@ -43,6 +45,7 @@ export default function RankingLeaderboardScreen({ route, navigation }: any) {
             <Text style={[styles.cell, styles.statCell]}>{item.firstPlace}</Text>
             <Text style={[styles.cell, styles.statCell]}>{item.secondPlace}</Text>
             <Text style={[styles.cell, styles.statCell]}>{item.thirdPlace}</Text>
+            <Text style={[styles.cell, styles.statCell]}>{item.handRummyCount}</Text>
             <Text style={[styles.cell, styles.statCell]}>{item.hatTricks}</Text>
             <Text style={[styles.cell, styles.statCell]}>{item.roundsWon}</Text>
             <Text style={[styles.cell, styles.statCell]}>{item.totalMatches}</Text>
@@ -52,6 +55,7 @@ export default function RankingLeaderboardScreen({ route, navigation }: any) {
 
     const renderFooter = () => (
         <View style={styles.excludeFooter}>
+            <Text style={styles.legendText}>H.R: Hand Rummy</Text>
             <Text style={styles.legendText}>H.T: Hat-trick</Text>
             <Text style={styles.legendText}>R.W: Rounds Won</Text>
             <Text style={styles.legendText}>T.M: Total Matches</Text>

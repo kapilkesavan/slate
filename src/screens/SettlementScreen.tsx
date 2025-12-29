@@ -40,8 +40,8 @@ const SettlementScreen = () => {
         const snapshots = await StorageService.getSettlements();
         const existingSnapshot = snapshots.find(s => s.sessionId === sessionId || s.id === sessionId);
 
-        if (existingSnapshot) {
-            // Found a saved snapshot! Use its data.
+        if (existingSnapshot && existingSnapshot.settlements && Array.isArray(existingSnapshot.settlements)) {
+            // Found a valid saved snapshot! Use its data.
             // We still need the session details (players, etc) for reference, so we try to load the session too.
             let sessionData = await StorageService.getCurrentSession();
             if (!sessionData || sessionData.id !== sessionId) {
@@ -53,7 +53,7 @@ const SettlementScreen = () => {
                 setSession(sessionData);
                 setPotSize(existingSnapshot.potSize);
                 setSettlements(existingSnapshot.settlements);
-                setTransfers(existingSnapshot.transfers);
+                setTransfers(existingSnapshot.transfers || []); // Fallback for transfers if missing
                 return; // Done!
             }
         }
